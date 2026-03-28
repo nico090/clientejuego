@@ -99,7 +99,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character.AI
             if (potentialFoe == null ||
                 potentialFoe.IsNpc ||
                 potentialFoe.LifeState != LifeState.Alive ||
-                potentialFoe.IsStealthy.Value)
+                potentialFoe.IsStealthy)
             {
                 return false;
             }

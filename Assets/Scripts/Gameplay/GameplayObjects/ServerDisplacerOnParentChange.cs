@@ -1,19 +1,17 @@
-using System;
 using System.Collections;
-using Unity.Netcode;
-using Unity.Netcode.Components;
+using Mirror;
 using UnityEngine;
 using UnityEngine.Animations;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects
 {
     /// <summary>
-    /// Component to simply play a descending animation when this NetworkObject's parent NetworkObject changes.
+    /// Component to simply play a descending animation when this NetworkIdentity's parent changes.
     /// </summary>
     public class ServerDisplacerOnParentChange : NetworkBehaviour
     {
         [SerializeField]
-        NetworkTransform m_NetworkTransform;
+        NetworkTransformReliable m_NetworkTransformReliable;
 
         [SerializeField]
         PositionConstraint m_PositionConstraint;
@@ -26,40 +24,37 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
             enabled = false;
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            m_PositionConstraint.enabled = IsServer;
-            enabled = IsServer;
+            base.OnStartServer();
+            m_PositionConstraint.enabled = true;
+            enabled = true;
         }
 
-        public override void OnNetworkObjectParentChanged(NetworkObject parentNetworkObject)
+        /// <summary>
+        /// Called by Unity when this transform's parent changes. Mirror does not have a built-in
+        /// OnNetworkObjectParentChanged callback, so we use the MonoBehaviour equivalent.
+        /// </summary>
+        void OnTransformParentChanged()
         {
-            if (!IsServer)
+            if (!isServer)
             {
                 return;
             }
 
             RemoveParentConstraintSources();
 
-            if (parentNetworkObject == null)
+            if (transform.parent == null)
             {
                 StopAllCoroutines();
 
-                m_NetworkTransform.InLocalSpace = false;
-
-                // when Netcode detects that a NetworkObject's parent has been destroyed, it assigns no parent for that
-                // object
-                // when this happens, NetworkTransform and PositionConstraint are disabled; here they are re-enabled
-                m_NetworkTransform.enabled = true;
+                // when the object is unparented, sync in world space and smooth-drop it to the ground
+                m_NetworkTransformReliable.enabled = true;
                 m_PositionConstraint.enabled = true;
 
-                // this NetworkObject has been dropped, move it slowly back to the ground
                 StartCoroutine(SmoothPositionLerpY(k_DropAnimationLength, 0));
             }
-            else
-            {
-                m_NetworkTransform.InLocalSpace = true;
-            }
+            // when parented, NetworkTransformReliable syncs in local space automatically if configured to do so
         }
 
         void RemoveParentConstraintSources()

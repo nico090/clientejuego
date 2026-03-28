@@ -1,11 +1,10 @@
+using Mirror;
 using Unity.BossRoom.ConnectionManagement;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
 using Unity.BossRoom.Gameplay.Messages;
 using Unity.BossRoom.Infrastructure;
-using Unity.Multiplayer.Samples.BossRoom;
-using Unity.Multiplayer.Samples.Utilities;
-using Unity.Netcode;
+using Unity.BossRoom.Infrastructure;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using VContainer;
@@ -14,7 +13,7 @@ namespace Unity.BossRoom.DebugCheats
 {
     /// <summary>
     /// Handles debug cheat events, applies them on the server and logs them on all clients. This class is only
-    /// available in the editor or for development builds
+    /// available in the editor or for development builds.
     /// </summary>
     public class DebugCheatsManager : NetworkBehaviour
     {
@@ -23,12 +22,12 @@ namespace Unity.BossRoom.DebugCheats
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         [SerializeField]
-        [Tooltip("Enemy to spawn. Make sure this is included in the NetworkManager's list of prefabs!")]
-        NetworkObject m_EnemyPrefab;
+        [Tooltip("Enemy to spawn. Make sure this is registered in the NetworkManager's spawnable prefabs!")]
+        GameObject m_EnemyPrefab;
 
         [SerializeField]
-        [Tooltip("Boss to spawn. Make sure this is included in the NetworkManager's list of prefabs!")]
-        NetworkObject m_BossPrefab;
+        [Tooltip("Boss to spawn. Make sure this is registered in the NetworkManager's spawnable prefabs!")]
+        GameObject m_BossPrefab;
 
         [SerializeField]
         InputActionReference m_ToggleCheatsAction;
@@ -58,9 +57,9 @@ namespace Unity.BossRoom.DebugCheats
             m_ToggleCheatsAction.action.performed += OnToggleCheatsActionPerformed;
         }
 
-        public override void OnDestroy()
+        public override void OnStopClient()
         {
-            base.OnDestroy();
+            base.OnStopClient();
             m_ToggleCheatsAction.action.performed -= OnToggleCheatsActionPerformed;
         }
 
@@ -71,101 +70,101 @@ namespace Unity.BossRoom.DebugCheats
 
         public void SpawnEnemy()
         {
-            ServerSpawnEnemyRpc();
+            CmdSpawnEnemy();
         }
 
         public void SpawnBoss()
         {
-            ServerSpawnBossRpc();
+            CmdSpawnBoss();
         }
 
         public void KillTarget()
         {
-            ServerKillTargetRpc();
+            CmdKillTarget();
         }
 
         public void KillAllEnemies()
         {
-            ServerKillAllEnemiesRpc();
+            CmdKillAllEnemies();
         }
 
         public void ToggleGodMode()
         {
-            ServerToggleGodModeRpc();
+            CmdToggleGodMode();
         }
 
         public void HealPlayer()
         {
-            ServerHealPlayerRpc();
+            CmdHealPlayer();
         }
 
         public void ToggleSuperSpeed()
         {
-            ServerToggleSuperSpeedRpc();
+            CmdToggleSuperSpeed();
         }
 
         public void ToggleTeleportMode()
         {
-            ServerToggleTeleportModeRpc();
+            CmdToggleTeleportMode();
         }
 
         public void ToggleDoor()
         {
-            ServerToggleDoorRpc();
+            CmdToggleDoor();
         }
 
         public void TogglePortals()
         {
-            ServerTogglePortalsRpc();
+            CmdTogglePortals();
         }
 
         public void GoToPostGame()
         {
-            GoToPostGameServerRpc();
+            CmdGoToPostGame();
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void ServerSpawnEnemyRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdSpawnEnemy(NetworkConnectionToClient sender = null)
         {
             var newEnemy = Instantiate(m_EnemyPrefab);
-            newEnemy.SpawnWithOwnership(NetworkManager.Singleton.LocalClientId, true);
-            PublishCheatUsedMessage(serverRpcParams.Receive.SenderClientId, "SpawnEnemy");
+            NetworkServer.Spawn(newEnemy);
+            PublishCheatUsedMessage(sender, "SpawnEnemy");
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void ServerSpawnBossRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdSpawnBoss(NetworkConnectionToClient sender = null)
         {
-            var newEnemy = Instantiate(m_BossPrefab);
-            newEnemy.SpawnWithOwnership(NetworkManager.Singleton.LocalClientId, true);
-            PublishCheatUsedMessage(serverRpcParams.Receive.SenderClientId, "SpawnBoss");
+            var newBoss = Instantiate(m_BossPrefab);
+            NetworkServer.Spawn(newBoss);
+            PublishCheatUsedMessage(sender, "SpawnBoss");
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void ServerKillTargetRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdKillTarget(NetworkConnectionToClient sender = null)
         {
-            ulong clientId = serverRpcParams.Receive.SenderClientId;
+            var clientId = sender != null ? (ulong)sender.connectionId : 0ul;
             var playerServerCharacter = PlayerServerCharacter.GetPlayerServerCharacter(clientId);
             if (playerServerCharacter != null)
             {
-                var targetId = playerServerCharacter.TargetId.Value;
-                if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetId, out NetworkObject obj))
+                var targetId = playerServerCharacter.TargetId;
+                if (NetworkServer.spawned.TryGetValue(targetId, out NetworkIdentity ni))
                 {
-                    var damageable = obj.GetComponent<IDamageable>();
+                    var damageable = ni.GetComponent<IDamageable>();
                     if (damageable != null && damageable.IsDamageable())
                     {
                         damageable.ReceiveHitPoints(playerServerCharacter, int.MinValue);
-                        PublishCheatUsedMessage(serverRpcParams.Receive.SenderClientId, "KillTarget");
+                        PublishCheatUsedMessage(sender, "KillTarget");
                     }
                     else
                     {
-                        UnityEngine.Debug.Log($"Target {targetId} has no IDamageable component or cannot be damaged.");
+                        Debug.Log($"Target {targetId} has no IDamageable component or cannot be damaged.");
                     }
                 }
             }
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void ServerKillAllEnemiesRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdKillAllEnemies(NetworkConnectionToClient sender = null)
         {
             foreach (var serverCharacter in FindObjectsByType<ServerCharacter>(FindObjectsSortMode.None))
             {
@@ -178,25 +177,25 @@ namespace Unity.BossRoom.DebugCheats
                 }
             }
 
-            PublishCheatUsedMessage(serverRpcParams.Receive.SenderClientId, "KillAllEnemies");
+            PublishCheatUsedMessage(sender, "KillAllEnemies");
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void ServerToggleGodModeRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdToggleGodMode(NetworkConnectionToClient sender = null)
         {
-            var clientId = serverRpcParams.Receive.SenderClientId;
+            var clientId = sender != null ? (ulong)sender.connectionId : 0ul;
             var playerServerCharacter = PlayerServerCharacter.GetPlayerServerCharacter(clientId);
             if (playerServerCharacter != null)
             {
-                playerServerCharacter.NetLifeState.IsGodMode.Value = !playerServerCharacter.NetLifeState.IsGodMode.Value;
-                PublishCheatUsedMessage(clientId, "ToggleGodMode");
+                playerServerCharacter.NetLifeState.IsGodMode = !playerServerCharacter.NetLifeState.IsGodMode;
+                PublishCheatUsedMessage(sender, "ToggleGodMode");
             }
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void ServerHealPlayerRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdHealPlayer(NetworkConnectionToClient sender = null)
         {
-            var clientId = serverRpcParams.Receive.SenderClientId;
+            var clientId = sender != null ? (ulong)sender.connectionId : 0ul;
             var playerServerCharacter = PlayerServerCharacter.GetPlayerServerCharacter(clientId);
             if (playerServerCharacter != null)
             {
@@ -213,66 +212,65 @@ namespace Unity.BossRoom.DebugCheats
                     }
                 }
 
-                PublishCheatUsedMessage(serverRpcParams.Receive.SenderClientId, "HealPlayer");
+                PublishCheatUsedMessage(sender, "HealPlayer");
             }
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void ServerToggleSuperSpeedRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdToggleSuperSpeed(NetworkConnectionToClient sender = null)
         {
-            var clientId = serverRpcParams.Receive.SenderClientId;
+            var clientId = sender != null ? (ulong)sender.connectionId : 0ul;
             foreach (var playerServerCharacter in PlayerServerCharacter.GetPlayerServerCharacters())
             {
-                if (playerServerCharacter.OwnerClientId == clientId)
+                if (playerServerCharacter.connectionToClient != null &&
+                    (ulong)playerServerCharacter.connectionToClient.connectionId == clientId)
                 {
                     playerServerCharacter.Movement.SpeedCheatActivated = !playerServerCharacter.Movement.SpeedCheatActivated;
                     break;
                 }
             }
 
-            PublishCheatUsedMessage(clientId, "ToggleSuperSpeed");
+            PublishCheatUsedMessage(sender, "ToggleSuperSpeed");
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void ServerToggleTeleportModeRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdToggleTeleportMode(NetworkConnectionToClient sender = null)
         {
-            var clientId = serverRpcParams.Receive.SenderClientId;
+            var clientId = sender != null ? (ulong)sender.connectionId : 0ul;
             foreach (var playerServerCharacter in PlayerServerCharacter.GetPlayerServerCharacters())
             {
-                if (playerServerCharacter.OwnerClientId == clientId)
+                if (playerServerCharacter.connectionToClient != null &&
+                    (ulong)playerServerCharacter.connectionToClient.connectionId == clientId)
                 {
                     playerServerCharacter.Movement.TeleportModeActivated = !playerServerCharacter.Movement.TeleportModeActivated;
                     break;
                 }
             }
 
-            PublishCheatUsedMessage(serverRpcParams.Receive.SenderClientId, "ToggleTeleportMode");
+            PublishCheatUsedMessage(sender, "ToggleTeleportMode");
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void ServerToggleDoorRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdToggleDoor(NetworkConnectionToClient sender = null)
         {
             if (SwitchedDoor != null)
             {
                 SwitchedDoor.ForceOpen = !SwitchedDoor.ForceOpen;
-                PublishCheatUsedMessage(serverRpcParams.Receive.SenderClientId, "ToggleDoor");
+                PublishCheatUsedMessage(sender, "ToggleDoor");
             }
             else
             {
-                UnityEngine.Debug.Log("Could not activate ToggleDoor cheat. Door not found.");
+                Debug.Log("Could not activate ToggleDoor cheat. Door not found.");
             }
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void ServerTogglePortalsRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdTogglePortals(NetworkConnectionToClient sender = null)
         {
             foreach (var portal in FindObjectsByType<EnemyPortal>(FindObjectsSortMode.None))
             {
                 if (m_DestroyPortalsOnNextToggle)
                 {
-                    // This will only affect portals that are currently active in a scene and are currently loaded.
-                    // Portals that are already destroyed will not be affected by this, and won't have their cooldown
-                    // reinitialized.
                     portal.ForceDestroy();
                 }
                 else
@@ -282,28 +280,24 @@ namespace Unity.BossRoom.DebugCheats
             }
 
             m_DestroyPortalsOnNextToggle = !m_DestroyPortalsOnNextToggle;
-            PublishCheatUsedMessage(serverRpcParams.Receive.SenderClientId, "TogglePortals");
+            PublishCheatUsedMessage(sender, "TogglePortals");
         }
 
-        [Rpc(SendTo.Server, RequireOwnership = false)]
-        void GoToPostGameServerRpc(RpcParams serverRpcParams = default)
+        [Command(requiresAuthority = false)]
+        void CmdGoToPostGame(NetworkConnectionToClient sender = null)
         {
             SceneLoaderWrapper.Instance.LoadScene("PostGame", useNetworkSceneManager: true);
-            PublishCheatUsedMessage(serverRpcParams.Receive.SenderClientId, "GoToPostGame");
+            PublishCheatUsedMessage(sender, "GoToPostGame");
         }
 
-        void PublishCheatUsedMessage(ulong clientId, string cheatUsed)
+        void PublishCheatUsedMessage(NetworkConnectionToClient sender, string cheatUsed)
         {
+            var clientId = sender != null ? (ulong)sender.connectionId : 0ul;
             var playerData = SessionManager<SessionPlayerData>.Instance.GetPlayerData(clientId);
             if (playerData.HasValue)
             {
                 m_CheatUsedMessagePublisher.Publish(new CheatUsedMessage(cheatUsed, playerData.Value.PlayerName));
             }
-        }
-
-        static void LogCheatNotImplemented(string cheat)
-        {
-            UnityEngine.Debug.Log($"Cheat {cheat} not implemented");
         }
 
 #else

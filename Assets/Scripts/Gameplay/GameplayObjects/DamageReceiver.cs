@@ -1,6 +1,6 @@
 using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects
@@ -41,7 +41,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
 
         public bool IsDamageable()
         {
-            return m_NetworkLifeState.LifeState.Value == LifeState.Alive;
+            return m_NetworkLifeState.LifeState == LifeState.Alive;
         }
 
         void OnCollisionEnter(Collision other)

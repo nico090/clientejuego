@@ -1,6 +1,6 @@
 using System.Collections.Generic;
+using Mirror;
 using Unity.BossRoom.Gameplay.GameplayObjects;
-using Unity.Netcode;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.Actions
@@ -32,13 +32,6 @@ namespace Unity.BossRoom.Gameplay.Actions
         /// <summary>
         /// Detects friends and/or foes near us.
         /// </summary>
-        /// <param name="wantPcs">true if we should detect PCs</param>
-        /// <param name="wantNpcs">true if we should detect NPCs</param>
-        /// <param name="attacker">The collider of the attacking GameObject.</param>
-        /// <param name="range">The range in meters to check.</param>
-        /// <param name="radius">The radius in meters to check.</param>
-        /// <param name="results">Place an uninitialized RayCastHit[] ref in here. It will be set to the results array. </param>
-        /// <returns></returns>
         public static int DetectNearbyEntitiesUseSphere(bool wantPcs, bool wantNpcs, Collider attacker, float range, float radius, out RaycastHit[] results)
         {
             var myBounds = attacker.bounds;
@@ -64,16 +57,8 @@ namespace Unity.BossRoom.Gameplay.Actions
         /// <summary>
         /// Detects friends and/or foes near us.
         /// </summary>
-        /// <param name="wantPcs">true if we should detect PCs</param>
-        /// <param name="wantNpcs">true if we should detect NPCs</param>
-        /// <param name="attacker">The collider of the attacking GameObject.</param>
-        /// <param name="range">The range in meters to check.</param>
-        /// <param name="results">Place an uninitialized RayCastHit[] ref in here. It will be set to the results array. </param>
-        /// <returns></returns>
         public static int DetectNearbyEntities(bool wantPcs, bool wantNpcs, Collider attacker, float range, out RaycastHit[] results)
         {
-            //this simple detect just does a boxcast out from our position in the direction we're facing, out to the range of the attack.
-
             var myBounds = attacker.bounds;
 
             if (s_PCLayer == -1)
@@ -95,17 +80,17 @@ namespace Unity.BossRoom.Gameplay.Actions
         }
 
         /// <summary>
-        /// Does this NetId represent a valid target? Used by Target Action. The target needs to exist, be a
-        /// NetworkCharacterState, and be alive. In the future, it will be any non-dead IDamageable.
+        /// Does this netId represent a valid target? Used by Target Action. The target needs to exist, be a
+        /// NetworkCharacterState, and be alive.
         /// </summary>
-        /// <param name="targetId">the NetId of the target to investigate</param>
+        /// <param name="targetId">the netId of the target to investigate</param>
         /// <returns>true if this is a valid target</returns>
-        public static bool IsValidTarget(ulong targetId)
+        public static bool IsValidTarget(uint targetId)
         {
             //note that we DON'T check if you're an ally. It's perfectly valid to target friends,
             //because there are friendly skills, such as Heal.
 
-            if (NetworkManager.Singleton.SpawnManager == null || !NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetId, out var targetChar))
+            if (!NetworkServer.active || !NetworkServer.spawned.TryGetValue(targetId, out var targetChar))
             {
                 return false;
             }
@@ -114,16 +99,9 @@ namespace Unity.BossRoom.Gameplay.Actions
             return targetable != null && targetable.IsValidTarget;
         }
 
-
         /// <summary>
         /// Given the coordinates of two entities, checks to see if there is an obstacle between them.
-        /// (Since character coordinates are beneath the feet of the visual avatar, we add a small amount of height to
-        /// these coordinates to simulate their eye-line.)
         /// </summary>
-        /// <param name="character1Pos">first character's position</param>
-        /// <param name="character2Pos">second character's position</param>
-        /// <param name="missPos">the point where an obstruction occurred (or if no obstruction, this is just character2Pos)</param>
-        /// <returns>true if no obstructions, false if there is a Ground-layer object in the way</returns>
         public static bool HasLineOfSight(Vector3 character1Pos, Vector3 character2Pos, out Vector3 missPos)
         {
             if (s_EnvironmentLayer == -1)
@@ -152,20 +130,14 @@ namespace Unity.BossRoom.Gameplay.Actions
         }
 
         /// <summary>
-        /// Helper method that calculates the percent a charge-up action is charged, based on how long it has run, returning a value
-        /// from 0-1.
+        /// Helper method that calculates the percent a charge-up action is charged.
         /// </summary>
-        /// <param name="stoppedChargingUpTime">The time when we finished charging up, or 0 if we're still charging.</param>
-        /// <param name="timeRunning">How long the action has been running. </param>
-        /// <param name="timeStarted">when the action started. </param>
-        /// <param name="execTime">the total execution time of the action (usually not its duration). </param>
-        /// <returns>Percent charge-up, from 0 to 1. </returns>
         public static float GetPercentChargedUp(float stoppedChargingUpTime, float timeRunning, float timeStarted, float execTime)
         {
             float timeSpentChargingUp;
             if (stoppedChargingUpTime == 0)
             {
-                timeSpentChargingUp = timeRunning; // we're still charging up, so all of our runtime has been charge-up time
+                timeSpentChargingUp = timeRunning;
             }
             else
             {
@@ -175,35 +147,22 @@ namespace Unity.BossRoom.Gameplay.Actions
         }
 
         /// <summary>
-        /// Determines a spot very near a chosen location, so that we can teleport next to the target (rather
-        /// than teleporting literally on top of the target). Can optionally perform a bunch of additional checks:
-        /// - can do a line-of-sight check and stop at the first obstruction.
-        /// - can make sure that the chosen spot is a meaningful distance away from the starting spot.
-        /// - can make sure that the chosen spot is no further than a specified distance away.
+        /// Determines a spot very near a chosen location for teleport destinations.
         /// </summary>
-        /// <param name="characterTransform">character's transform</param>
-        /// <param name="targetSpot">location we want to be next to</param>
-        /// <param name="stopAtObstructions">true if we should be blocked by obstructions such as walls</param>
-        /// <param name="distanceToUseIfVeryClose">if we should fix up very short teleport destinations, the new location will be this far away (in meters). -1 = don't check for short teleports</param>
-        /// <param name="maxDistance">returned location will be no further away from characterTransform than this. -1 = no max distance</param>
-        /// <returns>new coordinates that are near the destination (or near the first obstruction)</returns>
         public static Vector3 GetDashDestination(Transform characterTransform, Vector3 targetSpot, bool stopAtObstructions, float distanceToUseIfVeryClose = -1, float maxDistance = -1)
         {
             Vector3 destinationSpot = targetSpot;
 
             if (distanceToUseIfVeryClose != -1)
             {
-                // make sure our stopping point is a meaningful distance away!
                 if (destinationSpot == Vector3.zero || Vector3.Distance(characterTransform.position, destinationSpot) <= k_VeryCloseTeleportRange)
                 {
-                    // we don't have a meaningful stopping spot. Find a new one based on the character's current direction
                     destinationSpot = characterTransform.position + characterTransform.forward * distanceToUseIfVeryClose;
                 }
             }
 
             if (maxDistance != -1)
             {
-                // make sure our stopping point isn't too far away!
                 float distance = Vector3.Distance(characterTransform.position, destinationSpot);
                 if (distance > maxDistance)
                 {
@@ -213,20 +172,16 @@ namespace Unity.BossRoom.Gameplay.Actions
 
             if (stopAtObstructions)
             {
-                // if we're going to hit an obstruction, stop at the obstruction
                 if (!HasLineOfSight(characterTransform.position, destinationSpot, out Vector3 collidePos))
                 {
                     destinationSpot = collidePos;
                 }
             }
 
-            // now get a spot "near" the end point
             destinationSpot = Vector3.MoveTowards(destinationSpot, characterTransform.position, k_CloseDistanceOffset);
 
             return destinationSpot;
         }
-
-
     }
 
     /// <summary>

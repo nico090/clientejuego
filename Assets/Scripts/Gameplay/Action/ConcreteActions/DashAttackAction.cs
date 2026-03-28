@@ -38,7 +38,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);
 
             // tell clients to visualize this action
-            serverCharacter.clientCharacter.ClientPlayActionRpc(Data);
+            serverCharacter.ClientPlayActionRpc(Data);
 
             return ActionConclusion.Continue;
         }
@@ -80,7 +80,7 @@ namespace Unity.BossRoom.Gameplay.Actions
 
             // because the client-side visualization of the action moves the character visualization around,
             // we need to explicitly end the client-side visuals when we abort
-            serverCharacter.clientCharacter.ClientCancelActionsByPrototypeIDRpc(ActionID);
+            serverCharacter.ClientCancelActionsByPrototypeIDRpc(ActionID);
 
         }
 
@@ -99,7 +99,8 @@ namespace Unity.BossRoom.Gameplay.Actions
             IDamageable foe = MeleeAction.GetIdealMeleeFoe(Config.IsFriendly ^ parent.IsNpc,
                 parent.physicsWrapper.DamageCollider,
                                                             Config.Radius, 0.0f,
-                                                            (Data.TargetIds != null && Data.TargetIds.Length > 0 ? Data.TargetIds[0] : 0));
+                                                            (Data.TargetIds != null && Data.TargetIds.Length > 0 ? Data.TargetIds[0] : 0),
+                                                            parent.netId);
 
             if (foe != null)
             {

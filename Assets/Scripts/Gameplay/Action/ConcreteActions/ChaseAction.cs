@@ -1,6 +1,6 @@
 using System;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.Actions
@@ -8,7 +8,7 @@ namespace Unity.BossRoom.Gameplay.Actions
     [CreateAssetMenu(menuName = "BossRoom/Actions/Chase Action")]
     public class ChaseAction : Action
     {
-        private NetworkObject m_Target;
+        private NetworkIdentity m_Target;
 
         Transform m_TargetTransform;
 
@@ -24,7 +24,7 @@ namespace Unity.BossRoom.Gameplay.Actions
                 return ActionConclusion.Stop;
             }
 
-            m_Target = NetworkManager.Singleton.SpawnManager.SpawnedObjects[m_Data.TargetIds[0]];
+            NetworkServer.spawned.TryGetValue(m_Data.TargetIds[0], out m_Target);
 
             if (PhysicsWrapper.TryGetPhysicsWrapper(m_Data.TargetIds[0], out var physicsWrapper))
             {
@@ -65,7 +65,7 @@ namespace Unity.BossRoom.Gameplay.Actions
         {
             return m_Data.TargetIds != null &&
                    m_Data.TargetIds.Length > 0 &&
-                   NetworkManager.Singleton.SpawnManager.SpawnedObjects.ContainsKey(m_Data.TargetIds[0]);
+                   NetworkServer.spawned.ContainsKey(m_Data.TargetIds[0]);
         }
 
         /// <summary>

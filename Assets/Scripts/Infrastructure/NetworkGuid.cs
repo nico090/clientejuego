@@ -1,9 +1,12 @@
 using System;
-using Unity.Netcode;
+using Mirror;
 
 namespace Unity.BossRoom.Infrastructure
 {
-    public struct NetworkGuid : INetworkSerializeByMemcpy
+    /// <summary>
+    /// A GUID split into two ulongs for network serialization with Mirror.
+    /// </summary>
+    public struct NetworkGuid
     {
         public ulong FirstHalf;
         public ulong SecondHalf;
@@ -25,6 +28,28 @@ namespace Unity.BossRoom.Infrastructure
             Buffer.BlockCopy(BitConverter.GetBytes(networkId.FirstHalf), 0, bytes, 0, 8);
             Buffer.BlockCopy(BitConverter.GetBytes(networkId.SecondHalf), 0, bytes, 8, 8);
             return new Guid(bytes);
+        }
+    }
+
+    /// <summary>
+    /// Mirror NetworkReader / NetworkWriter extensions so NetworkGuid can be
+    /// serialized inside SyncVars, Commands, ClientRpcs, and NetworkMessages.
+    /// </summary>
+    public static class NetworkGuidReaderWriterExtensions
+    {
+        public static void WriteNetworkGuid(this NetworkWriter writer, NetworkGuid value)
+        {
+            writer.WriteULong(value.FirstHalf);
+            writer.WriteULong(value.SecondHalf);
+        }
+
+        public static NetworkGuid ReadNetworkGuid(this NetworkReader reader)
+        {
+            return new NetworkGuid
+            {
+                FirstHalf = reader.ReadULong(),
+                SecondHalf = reader.ReadULong()
+            };
         }
     }
 }

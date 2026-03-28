@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
 using Unity.BossRoom.VisualEffects;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.Actions
@@ -30,7 +30,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             // (don't wait until impact, because the particles need to start sooner!)
             if (Data.TargetIds != null
                 && Data.TargetIds.Length > 0
-                && NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(Data.TargetIds[0], out var targetNetworkObj)
+                && NetworkClient.spawned.TryGetValue(Data.TargetIds[0], out var targetNetworkObj)
                 && targetNetworkObj != null)
             {
                 float padRange = Config.Range + k_RangePadding;
@@ -97,7 +97,7 @@ namespace Unity.BossRoom.Gameplay.Actions
 
             m_ImpactPlayed = true;
 
-            if (NetworkManager.Singleton.IsServer)
+            if (NetworkServer.active)
             {
                 return;
             }
@@ -105,7 +105,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             //Is my original target still in range? Then definitely get him!
             if (Data.TargetIds != null &&
                 Data.TargetIds.Length > 0 &&
-                NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(Data.TargetIds[0], out var targetNetworkObj)
+                NetworkClient.spawned.TryGetValue(Data.TargetIds[0], out var targetNetworkObj)
                 && targetNetworkObj != null)
             {
                 float padRange = Config.Range + k_RangePadding;
@@ -122,7 +122,7 @@ namespace Unity.BossRoom.Gameplay.Actions
 
                 if ((parent.transform.position - targetPosition).sqrMagnitude < (padRange * padRange))
                 {
-                    if (targetNetworkObj.NetworkObjectId != parent.NetworkObjectId)
+                    if (targetNetworkObj.netId != parent.serverCharacter.netId)
                     {
                         string hitAnim = Config.ReactAnim;
                         if (string.IsNullOrEmpty(hitAnim)) { hitAnim = k_DefaultHitReact; }

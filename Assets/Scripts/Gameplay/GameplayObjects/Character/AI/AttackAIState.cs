@@ -71,7 +71,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character.AI
             {
                 if (GameDataSource.Instance.GetActionPrototypeByID(info.ActionID).IsChaseAction)
                 {
-                    if (info.TargetIds != null && info.TargetIds[0] == m_Foe.NetworkObjectId)
+                    if (info.TargetIds != null && info.TargetIds[0] == m_Foe.netId)
                     {
                         // yep we're chasing our foe; all set! (The attack is enqueued after it)
                         return;
@@ -79,7 +79,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character.AI
                 }
                 else if (info.ActionID == m_CurAttackAction.ActionID)
                 {
-                    if (info.TargetIds != null && info.TargetIds[0] == m_Foe.NetworkObjectId)
+                    if (info.TargetIds != null && info.TargetIds[0] == m_Foe.netId)
                     {
                         // yep we're attacking our foe; all set!
                         return;
@@ -104,7 +104,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character.AI
             var attackData = new ActionRequestData
             {
                 ActionID = m_CurAttackAction.ActionID,
-                TargetIds = new ulong[] { m_Foe.NetworkObjectId },
+                TargetIds = new uint[] { m_Foe.netId },
                 ShouldClose = true,
                 Direction = m_Brain.GetMyServerCharacter().physicsWrapper.Transform.forward
             };

@@ -555,28 +555,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b75179a400e24b20b141bd6802e53254, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_CanvasGroup: {fileID: 5841466599347033389}
-  m_DelayBeforeFadeOut: 0.5
-  m_FadeOutDuration: 0.1
-  m_ProgressBar: {fileID: 9084798262095498542}
-  m_SceneName: {fileID: 552738085472852216}
-  m_OtherPlayersProgressBars:
-  - {fileID: 6468167915467450070}
-  - {fileID: 4856421738389065051}
-  - {fileID: 276566188879366174}
-  - {fileID: 4521164827095775794}
-  - {fileID: 5057827224535308635}
-  - {fileID: 1371020873503242977}
-  - {fileID: 6087021097605576868}
-  m_OtherPlayerNamesTexts:
-  - {fileID: 5654253317536030528}
-  - {fileID: 7181139381873902389}
-  - {fileID: 6446033460649499843}
-  - {fileID: 3950387672190541641}
-  - {fileID: 7474488958548376821}
-  - {fileID: 4632518930274779008}
-  - {fileID: 6817560313460574097}
-  m_LoadingProgressManager: {fileID: 0}
   m_PersistentPlayerRuntimeCollection: {fileID: 11400000, guid: 23c3465e22da67c4e812c4faf3adb1cb, type: 2}
 --- !u!114 &2516136186326398479
 MonoBehaviour:
@@ -1822,15 +1800,17 @@ MonoBehaviour:
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
-  m_enableWordWrapping: 1
+  m_TextWrappingMode: 1
   m_wordWrappingRatios: 0.4
   m_overflowMode: 0
   m_linkedTextComponent: {fileID: 0}
   parentLinkedComponent: {fileID: 0}
   m_enableKerning: 1
+  m_ActiveFontFeatures: 00000000
   m_enableExtraPadding: 0
   checkPaddingRequired: 0
   m_isRichText: 1
+  m_EmojiFallbackSupport: 1
   m_parseCtrlCharacters: 1
   m_isOrthographic: 1
   m_isCullingEnabled: 0

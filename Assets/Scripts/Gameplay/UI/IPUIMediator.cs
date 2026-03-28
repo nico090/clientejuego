@@ -4,7 +4,7 @@ using Unity.BossRoom.Gameplay.Configuration;
 using TMPro;
 using Unity.BossRoom.ConnectionManagement;
 using Unity.BossRoom.Infrastructure;
-using Unity.Networking.Transport;
+using System.Net;
 using UnityEngine;
 using VContainer;
 
@@ -19,6 +19,8 @@ namespace Unity.BossRoom.Gameplay.UI
         CanvasGroup m_CanvasGroup;
 
         [SerializeField] TextMeshProUGUI m_PlayerNameLabel;
+
+        [SerializeField] TMP_InputField m_PlayerNameInput;
 
         [SerializeField] IPJoiningUI m_IPJoiningUI;
 
@@ -87,7 +89,7 @@ namespace Unity.BossRoom.Gameplay.UI
             ip = string.IsNullOrEmpty(ip) ? k_DefaultIP : ip;
 
             m_SignInSpinner.SetActive(true);
-            m_ConnectionManager.StartHostIp(m_PlayerNameLabel.text, ip, portNum);
+            m_ConnectionManager.StartHostIp(GetPlayerName(), ip, portNum);
         }
 
         public void JoinWithIP(string ip, string port)
@@ -102,7 +104,7 @@ namespace Unity.BossRoom.Gameplay.UI
 
             m_SignInSpinner.SetActive(true);
 
-            m_ConnectionManager.StartClientIp(m_PlayerNameLabel.text, ip, portNum);
+            m_ConnectionManager.StartClientIp(GetPlayerName(), ip, portNum);
 
             m_IPConnectionWindow.ShowConnectingWindow();
         }
@@ -128,7 +130,19 @@ namespace Unity.BossRoom.Gameplay.UI
 
         public void RegenerateName()
         {
-            m_PlayerNameLabel.text = m_NameGenerationData.GenerateName();
+            if (m_NameGenerationData == null) return;
+            string generated = m_NameGenerationData.GenerateName();
+            if (m_PlayerNameLabel != null) m_PlayerNameLabel.text = generated;
+            if (m_PlayerNameInput != null) m_PlayerNameInput.text = generated;
+        }
+
+        public string GetPlayerName()
+        {
+            if (m_PlayerNameInput != null && !string.IsNullOrWhiteSpace(m_PlayerNameInput.text))
+                return m_PlayerNameInput.text.Trim();
+            if (m_PlayerNameLabel != null && !string.IsNullOrWhiteSpace(m_PlayerNameLabel.text))
+                return m_PlayerNameLabel.text.Trim();
+            return "Player";
         }
 
         public void ToggleJoinIPUI()
@@ -200,7 +214,7 @@ namespace Unity.BossRoom.Gameplay.UI
         public static bool AreIpAddressAndPortValid(string ipAddress, string port)
         {
             var portValid = ushort.TryParse(port, out var portNum);
-            return portValid && NetworkEndpoint.TryParse(ipAddress, portNum, out var networkEndPoint);
+            return portValid && IPAddress.TryParse(ipAddress, out _);
         }
     }
 }

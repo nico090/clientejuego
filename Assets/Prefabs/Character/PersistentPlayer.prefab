@@ -27,13 +27,13 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4927145850774787080}
+  serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &5202563697772659352
 MonoBehaviour:
@@ -44,16 +44,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 4927145850774787080}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Script: {fileID: 11500000, guid: 9b91ecbcc199f4492b9a91e820070131, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  GlobalObjectIdHash: 951099334
-  AlwaysReplicateAsRoot: 0
-  SynchronizeTransform: 0
-  ActiveSceneSynchronization: 0
-  SceneMigrationSynchronization: 1
-  DontDestroyWithOwner: 0
-  AutoObjectParentSync: 1
+  sceneId: 0
+  _assetId: 2986305554
+  serverOnly: 0
+  visibility: 0
+  hasSpawned: 0
 --- !u!114 &-5536186819612961332
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -66,6 +64,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e9bbde9373514244f989e226f86fdc6b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
   m_PersistentPlayerRuntimeCollection: {fileID: 11400000, guid: 23c3465e22da67c4e812c4faf3adb1cb, type: 2}
   m_NetworkNameState: {fileID: 8450381715082006755}
   m_NetworkAvatarGuidState: {fileID: 596945379875709001}
@@ -81,6 +82,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d99850df10e83c142b4b65527d7cea91, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  Name:
+    m_Name: 
 --- !u!114 &596945379875709001
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -93,4 +99,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ebe9bfd21e47445488dfd84b4e0c9884, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
   m_AvatarRegistry: {fileID: 11400000, guid: 48d17d764bff6c643a3dc035fb71c979, type: 2}

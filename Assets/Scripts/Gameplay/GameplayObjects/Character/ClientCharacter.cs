@@ -1,18 +1,24 @@
 using System;
+using Mirror;
 using Unity.BossRoom.CameraUtils;
 using Unity.BossRoom.Gameplay.UserInput;
 using Unity.BossRoom.Gameplay.Configuration;
 using Unity.BossRoom.Gameplay.Actions;
 using Unity.BossRoom.Utils;
-using Unity.Netcode;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 {
     /// <summary>
-    /// <see cref="ClientCharacter"/> is responsible for displaying a character on the client's screen based on state information sent by the server.
+    /// <see cref="ClientCharacter"/> is responsible for displaying a character on the client's screen
+    /// based on state information sent by the server.
     /// </summary>
-    public class ClientCharacter : NetworkBehaviour
+    /// <remarks>
+    /// This is a MonoBehaviour (not NetworkBehaviour) because it lives on a child graphics object.
+    /// Mirror requires NetworkIdentity on the same GameObject as any NetworkBehaviour, and the
+    /// NetworkIdentity is on the parent. RPCs are routed through ServerCharacter on the root.
+    /// </remarks>
+    public class ClientCharacter : MonoBehaviour
     {
         [SerializeField]
         Animator m_ClientVisualsAnimator;
@@ -20,24 +26,16 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         [SerializeField]
         VisualizationConfiguration m_VisualizationConfiguration;
 
-        /// <summary>
-        /// Returns a reference to the active Animator for this visualization
-        /// </summary>
+        /// <summary>Returns a reference to the active Animator for this visualization.</summary>
         public Animator OurAnimator => m_ClientVisualsAnimator;
 
-        /// <summary>
-        /// Returns the targeting-reticule prefab for this character visualization
-        /// </summary>
+        /// <summary>Returns the targeting-reticule prefab for this character visualization.</summary>
         public GameObject TargetReticulePrefab => m_VisualizationConfiguration.TargetReticule;
 
-        /// <summary>
-        /// Returns the Material to plug into the reticule when the selected entity is hostile
-        /// </summary>
+        /// <summary>Returns the Material to plug into the reticule when the selected entity is hostile.</summary>
         public Material ReticuleHostileMat => m_VisualizationConfiguration.ReticuleHostileMat;
 
-        /// <summary>
-        /// Returns the Material to plug into the reticule when the selected entity is friendly
-        /// </summary>
+        /// <summary>Returns the Material to plug into the reticule when the selected entity is friendly.</summary>
         public Material ReticuleFriendlyMat => m_VisualizationConfiguration.ReticuleFriendlyMat;
 
         CharacterSwap m_CharacterSwapper;
@@ -56,7 +54,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
         RotationLerper m_RotationLerper;
 
-        // this value suffices for both positional and rotational interpolations; one may have a constant value for each
+        // this value suffices for both positional and rotational interpolations
         const float k_LerpTime = 0.08f;
 
         Vector3 m_LerpedPosition;
@@ -66,40 +64,34 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         float m_CurrentSpeed;
 
         /// <summary>
-        /// /// Server to Client RPC that broadcasts this action play to all clients.
+        /// Called on all clients to play an action's visual effects.
+        /// Invoked by ServerCharacter's ClientRpc forwarder.
         /// </summary>
-        /// <param name="data"> Data about which action to play and its associated details. </param>
-        [Rpc(SendTo.ClientsAndHost)]
-        public void ClientPlayActionRpc(ActionRequestData data)
+        public void PlayAction(ActionRequestData data)
         {
-            ActionRequestData data1 = data;
-            m_ClientActionViz.PlayAction(ref data1);
+            m_ClientActionViz.PlayAction(ref data);
         }
 
         /// <summary>
-        /// This RPC is invoked on the client when the active action FXs need to be cancelled (e.g. when the character has been stunned)
+        /// Called on all clients to cancel all active action FXs.
         /// </summary>
-        [Rpc(SendTo.ClientsAndHost)]
-        public void ClientCancelAllActionsRpc()
+        public void CancelAllActions()
         {
             m_ClientActionViz.CancelAllActions();
         }
 
         /// <summary>
-        /// This RPC is invoked on the client when active action FXs of a certain type need to be cancelled (e.g. when the Stealth action ends)
+        /// Called on all clients to cancel action FXs of a certain type.
         /// </summary>
-        [Rpc(SendTo.ClientsAndHost)]
-        public void ClientCancelActionsByPrototypeIDRpc(ActionID actionPrototypeID)
+        public void CancelActionsByPrototypeID(ActionID actionPrototypeID)
         {
             m_ClientActionViz.CancelAllActionsWithSamePrototypeID(actionPrototypeID);
         }
 
         /// <summary>
         /// Called on all clients when this character has stopped "charging up" an attack.
-        /// Provides a value between 0 and 1 inclusive which indicates how "charged up" the attack ended up being.
         /// </summary>
-        [Rpc(SendTo.ClientsAndHost)]
-        public void ClientStopChargingUpRpc(float percentCharged)
+        public void StopChargingUp(float percentCharged)
         {
             m_ClientActionViz.OnStoppedChargingUp(percentCharged);
         }
@@ -109,9 +101,13 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
             enabled = false;
         }
 
-        public override void OnNetworkSpawn()
+        /// <summary>
+        /// Called by ServerCharacter when the network object starts on the client.
+        /// Replaces the former NetworkBehaviour.OnStartClient override.
+        /// </summary>
+        public void OnNetworkStartClient(ServerCharacter parentServerCharacter)
         {
-            if (!IsClient || transform.parent == null)
+            if (transform.parent == null)
             {
                 return;
             }
@@ -120,11 +116,11 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
             m_ClientActionViz = new ClientActionPlayer(this);
 
-            m_ServerCharacter = GetComponentInParent<ServerCharacter>();
+            m_ServerCharacter = parentServerCharacter;
 
-            m_ServerCharacter.IsStealthy.OnValueChanged += OnStealthyChanged;
-            m_ServerCharacter.MovementStatus.OnValueChanged += OnMovementStatusChanged;
-            OnMovementStatusChanged(MovementStatus.Normal, m_ServerCharacter.MovementStatus.Value);
+            m_ServerCharacter.IsStealthyChanged += OnStealthyChanged;
+            m_ServerCharacter.MovementStatusChanged += OnMovementStatusChanged;
+            OnMovementStatusChanged(MovementStatus.Normal, m_ServerCharacter.MovementStatus);
 
             // sync our visualization position & rotation to the most up to date version received from server
             transform.SetPositionAndRotation(serverCharacter.physicsWrapper.Transform.position,
@@ -138,7 +134,9 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
             if (!m_ServerCharacter.IsNpc)
             {
-                name = "AvatarGraphics" + m_ServerCharacter.OwnerClientId;
+                name = "AvatarGraphics" + (m_ServerCharacter.connectionToClient != null
+                    ? (object)m_ServerCharacter.connectionToClient.connectionId
+                    : m_ServerCharacter.netId);
 
                 if (m_ServerCharacter.TryGetComponent(out ClientPlayerAvatarNetworkAnimator characterNetworkAnimator))
                 {
@@ -150,7 +148,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
                 // ...and visualize the current char-select value that we know about
                 SetAppearanceSwap();
 
-                if (m_ServerCharacter.IsOwner)
+                if (m_ServerCharacter.isOwned)
                 {
                     ActionRequestData data = new ActionRequestData { ActionID = GameDataSource.Instance.GeneralTargetActionPrototype.ActionID };
                     m_ClientActionViz.PlayAction(ref data);
@@ -159,7 +157,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
                     if (m_ServerCharacter.TryGetComponent(out ClientInputSender inputSender))
                     {
                         // anticipated actions will only be played on non-host, owning clients
-                        if (!IsServer)
+                        if (!NetworkServer.active)
                         {
                             inputSender.ActionInputEvent += OnActionInput;
                         }
@@ -169,11 +167,15 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
             }
         }
 
-        public override void OnNetworkDespawn()
+        /// <summary>
+        /// Called by ServerCharacter when the network object stops on the client.
+        /// Replaces the former NetworkBehaviour.OnStopClient override.
+        /// </summary>
+        public void OnNetworkStopClient()
         {
             if (m_ServerCharacter)
             {
-                m_ServerCharacter.IsStealthy.OnValueChanged -= OnStealthyChanged;
+                m_ServerCharacter.IsStealthyChanged -= OnStealthyChanged;
 
                 if (m_ServerCharacter.TryGetComponent(out ClientInputSender sender))
                 {
@@ -208,9 +210,9 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
             if (m_CharacterSwapper)
             {
                 var specialMaterialMode = CharacterSwap.SpecialMaterialMode.None;
-                if (m_ServerCharacter.IsStealthy.Value)
+                if (m_ServerCharacter.IsStealthy)
                 {
-                    if (m_ServerCharacter.IsOwner)
+                    if (m_ServerCharacter.isOwned)
                     {
                         specialMaterialMode = CharacterSwap.SpecialMaterialMode.StealthySelf;
                     }
@@ -229,7 +231,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         /// </summary>
         float GetVisualMovementSpeed(MovementStatus movementStatus)
         {
-            if (m_ServerCharacter.NetLifeState.LifeState.Value != LifeState.Alive)
+            if (m_ServerCharacter.NetLifeState.LifeState != LifeState.Alive)
             {
                 return m_VisualizationConfiguration.SpeedDead;
             }
@@ -260,15 +262,10 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
         void Update()
         {
-            // On the host, Characters are translated via ServerCharacterMovement's FixedUpdate method. To ensure that
-            // the game camera tracks a GameObject moving in the Update loop and therefore eliminate any camera jitter,
-            // this graphics GameObject's position is smoothed over time on the host. Clients do not need to perform any
-            // positional smoothing since NetworkTransform will interpolate position updates on the root GameObject.
-            if (IsHost)
+            // On the host, Characters are translated via ServerCharacterMovement's FixedUpdate method.
+            // Smoothing here eliminates camera jitter on the host.
+            if (NetworkServer.active && NetworkClient.active) // host
             {
-                // Note: a cached position (m_LerpedPosition) and rotation (m_LerpedRotation) are created and used as
-                // the starting point for each interpolation since the root's position and rotation are modified in
-                // FixedUpdate, thus altering this transform (being a child) in the process.
                 m_LerpedPosition = m_PositionLerper.LerpPosition(m_LerpedPosition,
                     serverCharacter.physicsWrapper.Transform.position);
                 m_LerpedRotation = m_RotationLerper.LerpRotation(m_LerpedRotation,
@@ -287,10 +284,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
         void OnAnimEvent(string id)
         {
-            //if you are trying to figure out who calls this method, it's "magic". The Unity Animation Event system takes method names as strings,
-            //and calls a method of the same name on a component on the same GameObject as the Animator. See the "attack1" Animation Clip as one
-            //example of where this is configured.
-
             m_ClientActionViz.OnAnimEvent(id);
         }
 

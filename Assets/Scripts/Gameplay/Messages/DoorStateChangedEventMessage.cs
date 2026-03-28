@@ -1,9 +1,6 @@
-using System;
-using Unity.Netcode;
-
 namespace Unity.BossRoom.Gameplay.Messages
 {
-    public struct DoorStateChangedEventMessage : INetworkSerializeByMemcpy
+    public struct DoorStateChangedEventMessage
     {
         public bool IsDoorOpen;
     }

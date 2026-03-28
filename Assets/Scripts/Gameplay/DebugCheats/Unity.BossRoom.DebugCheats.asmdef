@@ -2,11 +2,10 @@
     "name": "Unity.BossRoom.DebugCheats",
     "rootNamespace": "",
     "references": [
-        "Unity.Netcode.Runtime",
+        "Mirror",
         "Unity.BossRoom.Infrastructure",
         "Unity.BossRoom.Gameplay",
         "Unity.BossRoom.ConnectionManagement",
-        "Unity.Multiplayer.Samples.Utilities",
         "VContainer",
         "Unity.InputSystem"
     ],

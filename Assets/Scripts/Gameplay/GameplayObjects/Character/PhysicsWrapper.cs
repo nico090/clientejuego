@@ -1,21 +1,20 @@
-using System;
 using System.Collections.Generic;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 {
     /// <summary>
     /// Wrapper class for direct references to components relevant to physics.
-    /// Each instance of a PhysicsWrapper is registered to a static dictionary, indexed by the NetworkObject's ID.
+    /// Each instance of a PhysicsWrapper is registered to a static dictionary, indexed by the NetworkIdentity's netId.
     /// </summary>
     /// <remarks>
-    /// The root GameObject of PCs & NPCs is not the object which will move through the world, so other classes will
+    /// The root GameObject of PCs and NPCs is not the object which will move through the world, so other classes
     /// need a quick reference to a PC's/NPC's in-game position.
     /// </remarks>
     public class PhysicsWrapper : NetworkBehaviour
     {
-        static Dictionary<ulong, PhysicsWrapper> m_PhysicsWrappers = new Dictionary<ulong, PhysicsWrapper>();
+        static Dictionary<uint, PhysicsWrapper> m_PhysicsWrappers = new Dictionary<uint, PhysicsWrapper>();
 
         [SerializeField]
         Transform m_Transform;
@@ -27,24 +26,47 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
         public Collider DamageCollider => m_DamageCollider;
 
-        ulong m_NetworkObjectID;
+        uint m_NetworkObjectID;
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            m_PhysicsWrappers.Add(NetworkObjectId, this);
-
-            m_NetworkObjectID = NetworkObjectId;
+            base.OnStartServer();
+            Register();
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+            if (!isServer)
+            {
+                Register();
+            }
+        }
+
+        public override void OnStopServer()
+        {
+            base.OnStopServer();
+            RemovePhysicsWrapper();
+        }
+
+        public override void OnStopClient()
+        {
+            base.OnStopClient();
+            if (!isServer)
+            {
+                RemovePhysicsWrapper();
+            }
+        }
+
+        void OnDestroy()
         {
             RemovePhysicsWrapper();
         }
 
-        public override void OnDestroy()
+        void Register()
         {
-            base.OnDestroy();
-            RemovePhysicsWrapper();
+            m_NetworkObjectID = netId;
+            m_PhysicsWrappers[m_NetworkObjectID] = this;
         }
 
         void RemovePhysicsWrapper()
@@ -52,7 +74,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
             m_PhysicsWrappers.Remove(m_NetworkObjectID);
         }
 
-        public static bool TryGetPhysicsWrapper(ulong networkObjectID, out PhysicsWrapper physicsWrapper)
+        public static bool TryGetPhysicsWrapper(uint networkObjectID, out PhysicsWrapper physicsWrapper)
         {
             return m_PhysicsWrappers.TryGetValue(networkObjectID, out physicsWrapper);
         }

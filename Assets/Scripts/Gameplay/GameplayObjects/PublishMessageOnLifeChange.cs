@@ -1,10 +1,9 @@
-using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
 using Unity.BossRoom.Gameplay.GameState;
 using Unity.BossRoom.Gameplay.Messages;
 using Unity.BossRoom.Infrastructure;
 using Unity.BossRoom.Utils;
-using Unity.Netcode;
 using UnityEngine;
 using VContainer;
 
@@ -33,28 +32,36 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
             m_ServerCharacter = GetComponent<ServerCharacter>();
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            if (IsServer)
-            {
-                m_NameState = GetComponent<NetworkNameState>();
-                m_NetworkLifeState.LifeState.OnValueChanged += OnLifeStateChanged;
+            base.OnStartServer();
+            m_NameState = GetComponent<NetworkNameState>();
+            m_NetworkLifeState.LifeStateChanged += OnLifeStateChanged;
 
-                var gameState = FindAnyObjectByType<ServerBossRoomState>();
-                if (gameState != null)
-                {
-                    gameState.Container.Inject(this);
-                }
+            var gameState = FindAnyObjectByType<ServerBossRoomState>();
+            if (gameState != null)
+            {
+                gameState.Container.Inject(this);
             }
+        }
+
+        public override void OnStopServer()
+        {
+            base.OnStopServer();
+            m_NetworkLifeState.LifeStateChanged -= OnLifeStateChanged;
         }
 
         void OnLifeStateChanged(LifeState previousState, LifeState newState)
         {
+            var lastDamager = m_ServerCharacter.LastDamager;
             m_Publisher.Publish(new LifeStateChangedEventMessage()
             {
-                CharacterName = m_NameState != null ? m_NameState.Name.Value : (FixedPlayerName)m_CharacterName,
+                CharacterName = m_NameState != null ? m_NameState.Name : (FixedPlayerName)m_CharacterName,
                 CharacterType = m_ServerCharacter.CharacterClass.CharacterType,
-                NewLifeState = newState
+                NewLifeState = newState,
+                ServerCharacter = m_ServerCharacter,
+                KillerNetId = lastDamager != null ? lastDamager.netId : 0u,
+                KilledByNpc = lastDamager != null && lastDamager.IsNpc
             });
         }
     }

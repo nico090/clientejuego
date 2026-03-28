@@ -2,13 +2,11 @@
     "name": "Unity.BossRoom.ApplicationLifecycle",
     "rootNamespace": "",
     "references": [
+        "Mirror",
         "Unity.BossRoom.Gameplay",
         "Unity.BossRoom.ApplicationLifecycle.Messages",
         "Unity.BossRoom.Infrastructure",
-        "Unity.BossRoom.UnityServices",
-        "Unity.Netcode.Runtime",
         "Unity.Collections",
-        "Unity.Multiplayer.Samples.Utilities",
         "Unity.BossRoom.Utils",
         "Unity.BossRoom.ConnectionManagement",
         "VContainer"

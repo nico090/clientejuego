@@ -1,6 +1,5 @@
-using System;
+using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Utils;
-using Unity.Netcode;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.UI
@@ -16,16 +15,16 @@ namespace Unity.BossRoom.Gameplay.UI
         [SerializeField]
         UIHealth m_UIHealth;
 
-        public void DisplayName(NetworkVariable<FixedPlayerName> networkedName)
+        public void DisplayName(NetworkNameState networkNameState)
         {
             m_UIName.gameObject.SetActive(true);
-            m_UIName.Initialize(networkedName);
+            m_UIName.Initialize(networkNameState);
         }
 
-        public void DisplayHealth(NetworkVariable<int> networkedHealth, int maxValue)
+        public void DisplayHealth(NetworkHealthState networkHealthState, int maxValue)
         {
             m_UIHealth.gameObject.SetActive(true);
-            m_UIHealth.Initialize(networkedHealth, maxValue);
+            m_UIHealth.Initialize(networkHealthState, maxValue);
         }
 
         public void HideHealth()

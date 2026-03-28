@@ -1,6 +1,6 @@
 using System;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.Actions
@@ -18,14 +18,14 @@ namespace Unity.BossRoom.Gameplay.Actions
         {
             //we must always clear the existing target, even if we don't run. This is how targets get cleared--running a TargetAction
             //with no target selected.
-            serverCharacter.TargetId.Value = 0;
+            serverCharacter.TargetId = 0;
 
             //there can only be one TargetAction at a time!
             serverCharacter.ActionPlayer.CancelRunningActionsByLogic(ActionLogic.Target, true, this);
 
             if (Data.TargetIds == null || Data.TargetIds.Length == 0) { return false; }
 
-            serverCharacter.TargetId.Value = TargetId;
+            serverCharacter.TargetId = TargetId;
 
             FaceTarget(serverCharacter, TargetId);
 
@@ -55,21 +55,21 @@ namespace Unity.BossRoom.Gameplay.Actions
 
         public override void Cancel(ServerCharacter serverCharacter)
         {
-            if (serverCharacter.TargetId.Value == TargetId)
+            if (serverCharacter.TargetId == TargetId)
             {
-                serverCharacter.TargetId.Value = 0;
+                serverCharacter.TargetId = 0;
             }
         }
 
-        private ulong TargetId { get { return Data.TargetIds[0]; } }
+        private uint TargetId { get { return Data.TargetIds[0]; } }
 
         /// <summary>
         /// Only call this after validating the target via IsValidTarget.
         /// </summary>
         /// <param name="targetId"></param>
-        private void FaceTarget(ServerCharacter parent, ulong targetId)
+        private void FaceTarget(ServerCharacter parent, uint targetId)
         {
-            if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetId, out var targetObject))
+            if (NetworkServer.spawned.TryGetValue(targetId, out var targetObject))
             {
                 Vector3 targetObjectPosition;
 

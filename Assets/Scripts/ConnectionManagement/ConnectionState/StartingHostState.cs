@@ -1,10 +1,5 @@
-using System;
 using Unity.BossRoom.Infrastructure;
-using Unity.BossRoom.UnityServices.Sessions;
-using Unity.Multiplayer.Samples.BossRoom;
-using Unity.Netcode;
 using UnityEngine;
-using VContainer;
 
 namespace Unity.BossRoom.ConnectionManagement
 {
@@ -14,10 +9,6 @@ namespace Unity.BossRoom.ConnectionManagement
     /// </summary>
     class StartingHostState : OnlineState
     {
-        [Inject]
-        MultiplayerServicesFacade m_MultiplayerServicesFacade;
-        [Inject]
-        LocalSession m_LocalSession;
         ConnectionMethodBase m_ConnectionMethod;
 
         public StartingHostState Configure(ConnectionMethodBase baseConnectionMethod)
@@ -39,26 +30,6 @@ namespace Unity.BossRoom.ConnectionManagement
             m_ConnectionManager.ChangeState(m_ConnectionManager.m_Hosting);
         }
 
-        public override void ApprovalCheck(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
-        {
-            var connectionData = request.Payload;
-            var clientId = request.ClientNetworkId;
-
-            // This happens when starting as a host, before the end of the StartHost call. In that case, we simply approve ourselves.
-            if (clientId == m_ConnectionManager.NetworkManager.LocalClientId)
-            {
-                var payload = System.Text.Encoding.UTF8.GetString(connectionData);
-                var connectionPayload = JsonUtility.FromJson<ConnectionPayload>(payload); // https://docs.unity3d.com/2020.2/Documentation/Manual/JSONSerialization.html
-
-                SessionManager<SessionPlayerData>.Instance.SetupConnectingPlayerSessionData(clientId, connectionPayload.playerId,
-                    new SessionPlayerData(clientId, connectionPayload.playerName, new NetworkGuid(), 0, true));
-
-                // connection approval will create a player object for you
-                response.Approved = true;
-                response.CreatePlayerObject = true;
-            }
-        }
-
         public override void OnServerStopped()
         {
             StartHostFailed();
@@ -66,24 +37,36 @@ namespace Unity.BossRoom.ConnectionManagement
 
         void StartHost()
         {
-            try
+            if (m_ConnectionManager.NetworkManager == null)
             {
-                m_ConnectionMethod.SetupHostConnection();
-
-                if (m_ConnectionMethod is ConnectionMethodIP)
-                {
-                    // NGO's StartHost launches everything
-                    if (!m_ConnectionManager.NetworkManager.StartHost())
-                    {
-                        StartHostFailed();
-                    }
-                }
-            }
-            catch (Exception)
-            {
+                Debug.LogError("BossRoomNetworkManager singleton is null. Make sure a BossRoomNetworkManager component exists in the scene.");
                 StartHostFailed();
-                throw;
+                return;
             }
+
+            if (m_ConnectionMethod == null)
+            {
+                Debug.LogError("StartingHostState: ConnectionMethod is null. Was Configure() called before Enter()?");
+                StartHostFailed();
+                return;
+            }
+
+            m_ConnectionMethod.SetupHostConnection();
+
+            // Register the host's session data before StartHost() triggers callbacks,
+            // because OnClientConnect fires before the ConnectionPayloadMessage is processed.
+            var payload = m_ConnectionManager.NetworkManager.PendingClientPayload;
+            if (payload != null)
+            {
+                ulong hostClientId = 0; // Mirror host connection is always 0
+                SessionManager<SessionPlayerData>.Instance.SetupConnectingPlayerSessionData(
+                    hostClientId,
+                    payload.playerId,
+                    new SessionPlayerData(hostClientId, payload.playerName, default, 0, true, false));
+            }
+
+            // Mirror StartHost — if it fails OnServerStopped will fire
+            m_ConnectionManager.NetworkManager.StartHost();
         }
 
         void StartHostFailed()

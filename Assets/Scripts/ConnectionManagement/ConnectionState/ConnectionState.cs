@@ -1,6 +1,4 @@
-using System;
 using Unity.BossRoom.Infrastructure;
-using Unity.Netcode;
 using UnityEngine;
 using VContainer;
 
@@ -28,15 +26,9 @@ namespace Unity.BossRoom.ConnectionManagement
 
         public virtual void StartClientIP(string playerName, string ipaddress, int port) { }
 
-        public virtual void StartClientSession(string playerName) { }
-
         public virtual void StartHostIP(string playerName, string ipaddress, int port) { }
 
-        public virtual void StartHostSession(string playerName) { }
-
         public virtual void OnUserRequestedShutdown() { }
-
-        public virtual void ApprovalCheck(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response) { }
 
         public virtual void OnTransportFailure() { }
 

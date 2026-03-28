@@ -1,20 +1,19 @@
-using System;
+using Mirror;
 using Unity.BossRoom.ConnectionManagement;
 using Unity.BossRoom.Gameplay.Actions;
-using Unity.Multiplayer.Samples.BossRoom;
-using Unity.Multiplayer.Samples.Utilities;
-using Unity.Netcode;
+using Unity.BossRoom.Infrastructure;
 using UnityEngine;
 using UnityEngine.Serialization;
 using VContainer;
 
 namespace Unity.BossRoom.Gameplay.GameState
 {
-    [RequireComponent(typeof(NetcodeHooks))]
+    [RequireComponent(typeof(NetworkHooks))]
     public class ServerPostGameState : GameStateBehaviour
     {
+        [FormerlySerializedAs("m_NetcodeHooks")]
         [SerializeField]
-        NetcodeHooks m_NetcodeHooks;
+        NetworkHooks m_NetworkHooks;
 
         [FormerlySerializedAs("synchronizedStateData")]
         [SerializeField]
@@ -32,20 +31,29 @@ namespace Unity.BossRoom.Gameplay.GameState
         protected override void Awake()
         {
             base.Awake();
-
-            m_NetcodeHooks.OnNetworkSpawnHook += OnNetworkSpawn;
+            m_NetworkHooks.OnNetworkSpawn += OnNetworkSpawn;
         }
 
         void OnNetworkSpawn()
         {
-            if (!NetworkManager.Singleton.IsServer)
+            if (!NetworkServer.active)
             {
                 enabled = false;
             }
             else
             {
                 SessionManager<SessionPlayerData>.Instance.OnSessionEnded();
-                networkPostGame.WinState.Value = m_PersistentGameState.WinState;
+                networkPostGame.WinState = m_PersistentGameState.WinState;
+
+                // Pass PvP final scores to clients
+                if (PvPScoreManager.Instance != null)
+                {
+                    string scoresJson = PvPScoreManager.Instance.GetFinalScoresJson();
+                    if (!string.IsNullOrEmpty(scoresJson))
+                    {
+                        networkPostGame.FinalScoresJson = scoresJson;
+                    }
+                }
             }
         }
 
@@ -57,7 +65,7 @@ namespace Unity.BossRoom.Gameplay.GameState
 
             base.OnDestroy();
 
-            m_NetcodeHooks.OnNetworkSpawnHook -= OnNetworkSpawn;
+            m_NetworkHooks.OnNetworkSpawn -= OnNetworkSpawn;
         }
 
         public void PlayAgain()

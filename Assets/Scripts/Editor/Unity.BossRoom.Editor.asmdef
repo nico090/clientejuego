@@ -2,8 +2,11 @@
     "name": "Unity.BossRoom.Editor",
     "rootNamespace": "",
     "references": [
-        "Unity.Netcode.Runtime",
-        "Unity.BossRoom.Gameplay"
+        "Unity.BossRoom.Gameplay",
+        "Unity.BossRoom.ConnectionManagement",
+        "Unity.TextMeshPro",
+        "Mirror",
+        "Mirror.Components"
     ],
     "includePlatforms": [
         "Editor"

@@ -1,10 +1,8 @@
-using System;
 using System.Collections;
 using System.Collections.Generic;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 using UnityEngine.Assertions;
-using UnityEngine.Serialization;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects
 {
@@ -45,13 +43,9 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         // currently active "wait X seconds and then restart" coroutine
         Coroutine m_CoroDormant;
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            if (!IsServer)
-            {
-                enabled = false;
-                return;
-            }
+            base.OnStartServer();
 
             foreach (var breakable in m_BreakableElements)
             {
@@ -61,8 +55,10 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
             MaintainState();
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopServer()
         {
+            base.OnStopServer();
+
             if (m_CoroDormant != null)
                 StopCoroutine(m_CoroDormant);
 
@@ -155,6 +151,4 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         }
 #endif
     }
-
-
 }

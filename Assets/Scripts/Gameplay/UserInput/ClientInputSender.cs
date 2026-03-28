@@ -1,9 +1,9 @@
 using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.Actions;
 using Unity.BossRoom.Gameplay.Configuration;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Assertions;
@@ -100,7 +100,7 @@ namespace Unity.BossRoom.Gameplay.UserInput
         {
             public SkillTriggerStyle TriggerStyle;
             public ActionID RequestedActionID;
-            public ulong TargetId;
+            public uint TargetId;
         }
 
         /// <summary>
@@ -145,9 +145,11 @@ namespace Unity.BossRoom.Gameplay.UserInput
             m_MainCamera = Camera.main;
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartClient()
         {
-            if (!IsClient || !IsOwner)
+            base.OnStartClient();
+
+            if (!isClient || !isOwned)
             {
                 enabled = false;
 
@@ -155,8 +157,8 @@ namespace Unity.BossRoom.Gameplay.UserInput
                 return;
             }
 
-            m_ServerCharacter.TargetId.OnValueChanged += OnTargetChanged;
-            m_ServerCharacter.HeldNetworkObject.OnValueChanged += OnHeldNetworkObjectChanged;
+            m_ServerCharacter.TargetIdChanged += OnTargetChanged;
+            m_ServerCharacter.HeldNetworkObjectChanged += OnHeldNetworkObjectChanged;
 
             if (CharacterClass.Skill1 &&
                 GameDataSource.Instance.TryGetActionPrototypeByID(CharacterClass.Skill1.ActionID, out var action1))
@@ -193,17 +195,19 @@ namespace Unity.BossRoom.Gameplay.UserInput
             m_RaycastHitComparer = new RaycastHitComparer();
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopClient()
         {
+            base.OnStopClient();
+
             if (m_ServerCharacter)
             {
-                m_ServerCharacter.TargetId.OnValueChanged -= OnTargetChanged;
-                m_ServerCharacter.HeldNetworkObject.OnValueChanged -= OnHeldNetworkObjectChanged;
+                m_ServerCharacter.TargetIdChanged -= OnTargetChanged;
+                m_ServerCharacter.HeldNetworkObjectChanged -= OnHeldNetworkObjectChanged;
             }
 
             if (m_TargetServerCharacter)
             {
-                m_TargetServerCharacter.NetLifeState.LifeState.OnValueChanged -= OnTargetLifeStateChanged;
+                m_TargetServerCharacter.NetLifeState.LifeStateChanged -= OnTargetLifeStateChanged;
             }
 
             m_Action1.action.started -= OnAction1Started;
@@ -218,25 +222,25 @@ namespace Unity.BossRoom.Gameplay.UserInput
             m_Action8.action.performed -= OnAction8Performed;
         }
 
-        void OnTargetChanged(ulong previousValue, ulong newValue)
+        void OnTargetChanged(uint previousValue, uint newValue)
         {
             if (m_TargetServerCharacter)
             {
-                m_TargetServerCharacter.NetLifeState.LifeState.OnValueChanged -= OnTargetLifeStateChanged;
+                m_TargetServerCharacter.NetLifeState.LifeStateChanged -= OnTargetLifeStateChanged;
             }
 
             m_TargetServerCharacter = null;
 
-            if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(newValue, out var selection) &&
+            if (NetworkClient.spawned.TryGetValue(newValue, out var selection) &&
                 selection.TryGetComponent(out m_TargetServerCharacter))
             {
-                m_TargetServerCharacter.NetLifeState.LifeState.OnValueChanged += OnTargetLifeStateChanged;
+                m_TargetServerCharacter.NetLifeState.LifeStateChanged += OnTargetLifeStateChanged;
             }
 
             UpdateAction1();
         }
 
-        void OnHeldNetworkObjectChanged(ulong previousValue, ulong newValue)
+        void OnHeldNetworkObjectChanged(uint previousValue, uint newValue)
         {
             UpdateAction1();
         }
@@ -336,15 +340,14 @@ namespace Unity.BossRoom.Gameplay.UserInput
         /// <param name="actionID">The action you want to play. Note that "Skill1" may be overriden contextually depending on the target.</param>
         /// <param name="triggerStyle">What sort of input triggered this skill?</param>
         /// <param name="targetId">(optional) Pass in a specific networkID to target for this action</param>
-        void PerformSkill(ActionID actionID, SkillTriggerStyle triggerStyle, ulong targetId = 0)
+        void PerformSkill(ActionID actionID, SkillTriggerStyle triggerStyle, uint targetId = 0)
         {
             Transform hitTransform = null;
 
             if (targetId != 0)
             {
                 // if a targetId is given, try to find the object
-                NetworkObject targetNetObj;
-                if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetId, out targetNetObj))
+                if (NetworkClient.spawned.TryGetValue(targetId, out var targetNetObj))
                 {
                     hitTransform = targetNetObj.transform;
                 }
@@ -362,7 +365,7 @@ namespace Unity.BossRoom.Gameplay.UserInput
                 int networkedHitIndex = -1;
                 for (int i = 0; i < numHits; i++)
                 {
-                    if (k_CachedHit[i].transform.GetComponentInParent<NetworkObject>())
+                    if (k_CachedHit[i].transform.GetComponentInParent<NetworkIdentity>())
                     {
                         networkedHitIndex = i;
                         break;
@@ -405,17 +408,17 @@ namespace Unity.BossRoom.Gameplay.UserInput
         {
             resultData = new ActionRequestData();
 
-            var targetNetObj = hit != null ? hit.GetComponentInParent<NetworkObject>() : null;
+            var targetNetObj = hit != null ? hit.GetComponentInParent<NetworkIdentity>() : null;
 
             //if we can't get our target from the submitted hit transform, get it from our stateful target in our ServerCharacter.
             if (!targetNetObj && !GameDataSource.Instance.GetActionPrototypeByID(actionID).IsGeneralTargetAction)
             {
-                ulong targetId = m_ServerCharacter.TargetId.Value;
-                NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetId, out targetNetObj);
+                uint targetId = m_ServerCharacter.TargetId;
+                NetworkClient.spawned.TryGetValue(targetId, out targetNetObj);
             }
 
             //sanity check that this is indeed a valid target.
-            if (targetNetObj == null || !ActionUtils.IsValidTarget(targetNetObj.NetworkObjectId))
+            if (targetNetObj == null || !ActionUtils.IsValidTarget(targetNetObj.netId))
             {
                 return false;
             }
@@ -434,7 +437,7 @@ namespace Unity.BossRoom.Gameplay.UserInput
             }
 
             Vector3 targetHitPoint;
-            if (PhysicsWrapper.TryGetPhysicsWrapper(targetNetObj.NetworkObjectId, out var movementContainer))
+            if (PhysicsWrapper.TryGetPhysicsWrapper(targetNetObj.netId, out var movementContainer))
             {
                 targetHitPoint = movementContainer.Transform.position;
             }
@@ -445,7 +448,7 @@ namespace Unity.BossRoom.Gameplay.UserInput
 
             // record our target in case this action uses that info (non-targeted attacks will ignore this)
             resultData.ActionID = actionID;
-            resultData.TargetIds = new ulong[] { targetNetObj.NetworkObjectId };
+            resultData.TargetIds = new uint[] { targetNetObj.netId };
             PopulateSkillRequest(targetHitPoint, actionID, ref resultData);
             return true;
         }
@@ -508,7 +511,7 @@ namespace Unity.BossRoom.Gameplay.UserInput
         /// <param name="actionID"> The action you'd like to perform. </param>
         /// <param name="triggerStyle"> What input style triggered this action. </param>
         /// <param name="targetId"> NetworkObjectId of target. </param>
-        public void RequestAction(ActionID actionID, SkillTriggerStyle triggerStyle, ulong targetId = 0)
+        public void RequestAction(ActionID actionID, SkillTriggerStyle triggerStyle, uint targetId = 0)
         {
             Assert.IsNotNull(GameDataSource.Instance.GetActionPrototypeByID(actionID),
                 $"Action with actionID {actionID} must be contained in the Action prototypes of GameDataSource!");
@@ -524,32 +527,38 @@ namespace Unity.BossRoom.Gameplay.UserInput
 
         void OnAction1Started(InputAction.CallbackContext obj)
         {
-            RequestAction(actionState1.actionID, SkillTriggerStyle.Keyboard);
+            if (actionState1 != null)
+                RequestAction(actionState1.actionID, SkillTriggerStyle.Keyboard);
         }
 
         void OnAction1Canceled(InputAction.CallbackContext obj)
         {
-            RequestAction(actionState1.actionID, SkillTriggerStyle.KeyboardRelease);
+            if (actionState1 != null)
+                RequestAction(actionState1.actionID, SkillTriggerStyle.KeyboardRelease);
         }
 
         void OnAction2Started(InputAction.CallbackContext obj)
         {
-            RequestAction(actionState2.actionID, SkillTriggerStyle.Keyboard);
+            if (actionState2 != null)
+                RequestAction(actionState2.actionID, SkillTriggerStyle.Keyboard);
         }
 
         void OnAction2Canceled(InputAction.CallbackContext obj)
         {
-            RequestAction(actionState2.actionID, SkillTriggerStyle.KeyboardRelease);
+            if (actionState2 != null)
+                RequestAction(actionState2.actionID, SkillTriggerStyle.KeyboardRelease);
         }
 
         void OnAction3Started(InputAction.CallbackContext obj)
         {
-            RequestAction(actionState3.actionID, SkillTriggerStyle.Keyboard);
+            if (actionState3 != null)
+                RequestAction(actionState3.actionID, SkillTriggerStyle.Keyboard);
         }
 
         void OnAction3Canceled(InputAction.CallbackContext obj)
         {
-            RequestAction(actionState3.actionID, SkillTriggerStyle.KeyboardRelease);
+            if (actionState3 != null)
+                RequestAction(actionState3.actionID, SkillTriggerStyle.KeyboardRelease);
         }
 
         void OnAction5Performed(InputAction.CallbackContext obj)
@@ -598,10 +607,10 @@ namespace Unity.BossRoom.Gameplay.UserInput
         void UpdateAction1()
         {
             var isHoldingNetworkObject =
-                NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(m_ServerCharacter.HeldNetworkObject.Value,
+                NetworkClient.spawned.TryGetValue(m_ServerCharacter.HeldNetworkObject,
                     out var heldNetworkObject);
 
-            NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(m_ServerCharacter.TargetId.Value,
+            NetworkClient.spawned.TryGetValue(m_ServerCharacter.TargetId,
                 out var selection);
 
             var isSelectable = true;
@@ -611,7 +620,7 @@ namespace Unity.BossRoom.Gameplay.UserInput
 
                 actionState1.actionID = GameDataSource.Instance.DropActionPrototype.ActionID;
             }
-            else if ((m_ServerCharacter.TargetId.Value != 0
+            else if ((m_ServerCharacter.TargetId != 0
                          && selection != null
                          && selection.TryGetComponent(out PickUpState pickUpState))
                     )
@@ -620,9 +629,9 @@ namespace Unity.BossRoom.Gameplay.UserInput
 
                 actionState1.actionID = GameDataSource.Instance.PickUpActionPrototype.ActionID;
             }
-            else if (m_ServerCharacter.TargetId.Value != 0
+            else if (m_ServerCharacter.TargetId != 0
                      && selection != null
-                     && selection.NetworkObjectId != m_ServerCharacter.NetworkObjectId
+                     && selection.netId != m_ServerCharacter.netId
                      && selection.TryGetComponent(out ServerCharacter charState)
                      && !charState.IsNpc)
             {
@@ -631,7 +640,7 @@ namespace Unity.BossRoom.Gameplay.UserInput
                 // But we need to know if the player is alive... if so, the button should be disabled (for better player communication)
 
                 actionState1.actionID = GameDataSource.Instance.ReviveActionPrototype.ActionID;
-                isSelectable = charState.NetLifeState.LifeState.Value != LifeState.Alive;
+                isSelectable = charState.NetLifeState.LifeState != LifeState.Alive;
             }
             else
             {

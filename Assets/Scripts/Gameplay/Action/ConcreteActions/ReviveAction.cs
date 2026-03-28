@@ -1,7 +1,7 @@
 using System;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 using UnityEngine.Assertions;
 
@@ -15,13 +15,11 @@ namespace Unity.BossRoom.Gameplay.Actions
 
         public override bool OnStart(ServerCharacter serverCharacter)
         {
-            if (m_Data.TargetIds == null || m_Data.TargetIds.Length == 0 || !NetworkManager.Singleton.SpawnManager.SpawnedObjects.ContainsKey(m_Data.TargetIds[0]))
+            if (m_Data.TargetIds == null || m_Data.TargetIds.Length == 0 || !NetworkServer.spawned.TryGetValue(m_Data.TargetIds[0], out var targetNetworkObject))
             {
                 Debug.Log("Failed to start ReviveAction. The target entity  wasn't submitted or doesn't exist anymore");
                 return false;
             }
-
-            var targetNetworkObject = NetworkManager.Singleton.SpawnManager.SpawnedObjects[m_Data.TargetIds[0]];
             m_TargetCharacter = targetNetworkObject.GetComponent<ServerCharacter>();
 
             serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);

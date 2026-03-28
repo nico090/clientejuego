@@ -1,7 +1,7 @@
 using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
 using Unity.BossRoom.Infrastructure;
-using Unity.Netcode;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects
@@ -48,7 +48,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         /// <summary>
         /// Is the item broken or not?
         /// </summary>
-        public bool IsBroken => m_NetworkHealthState.HitPoints.Value == 0;
+        public bool IsBroken => m_NetworkHealthState.HitPoints == 0;
 
         public event Action Broken;
 
@@ -58,22 +58,23 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
 
         GameObject m_CurrentBrokenVisualization;
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            if (IsServer)
+            base.OnStartServer();
+            if (m_MaxHealth && m_NetworkHealthState)
             {
-                if (m_MaxHealth && m_NetworkHealthState)
-                {
-                    m_NetworkHealthState.HitPoints.Value = m_MaxHealth.Value;
-                }
+                m_NetworkHealthState.HitPoints = m_MaxHealth.Value;
             }
+            UpdateCollider();
+        }
 
-            if (IsClient)
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+            if (m_NetworkHealthState)
             {
-                if (m_NetworkHealthState)
-                {
-                    m_NetworkHealthState.HitPoints.OnValueChanged += OnHPChanged;
-                }
+                m_NetworkHealthState.HitPointsDepleted += OnClientBroken;
+                m_NetworkHealthState.HitPointsReplenished += OnClientReplenished;
 
                 if (IsBroken)
                 {
@@ -82,12 +83,30 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
             }
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopClient()
         {
-            if (IsClient && m_NetworkHealthState)
+            base.OnStopClient();
+            if (m_NetworkHealthState)
             {
-                m_NetworkHealthState.HitPoints.OnValueChanged -= OnHPChanged;
+                m_NetworkHealthState.HitPointsDepleted -= OnClientBroken;
+                m_NetworkHealthState.HitPointsReplenished -= OnClientReplenished;
             }
+        }
+
+        void OnClientBroken()
+        {
+            PerformBreakVisualization(false);
+        }
+
+        void OnClientReplenished()
+        {
+            PerformUnbreakVisualization();
+        }
+
+        void UpdateCollider()
+        {
+            if (m_Collider)
+                m_Collider.enabled = !IsBroken;
         }
 
         public void ReceiveHitPoints(ServerCharacter inflicter, int hitPoints)
@@ -106,25 +125,34 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
 
                 if (m_NetworkHealthState && m_MaxHealth)
                 {
-                    m_NetworkHealthState.HitPoints.Value =
-                        Mathf.Clamp(m_NetworkHealthState.HitPoints.Value + hitPoints, 0, m_MaxHealth.Value);
+                    m_NetworkHealthState.HitPoints =
+                        Mathf.Clamp(m_NetworkHealthState.HitPoints + hitPoints, 0, m_MaxHealth.Value);
                 }
+            }
+
+            if (IsBroken)
+            {
+                Broken?.Invoke();
+                UpdateCollider();
             }
         }
 
         public int GetTotalDamage()
         {
-            return Math.Max(0, m_MaxHealth.Value - m_NetworkHealthState.HitPoints.Value);
+            return Math.Max(0, m_MaxHealth.Value - m_NetworkHealthState.HitPoints);
         }
 
         public void Break()
         {
-            m_NetworkHealthState.HitPoints.Value = 0;
+            m_NetworkHealthState.HitPoints = 0;
+            Broken?.Invoke();
+            UpdateCollider();
         }
 
         public void Unbreak()
         {
-            m_NetworkHealthState.HitPoints.Value = m_MaxHealth.Value;
+            m_NetworkHealthState.HitPoints = m_MaxHealth.Value;
+            UpdateCollider();
         }
 
         public IDamageable.SpecialDamageFlags GetSpecialDamageFlags()
@@ -136,27 +164,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         {
             // you can damage this breakable until it's broken!
             return !IsBroken;
-        }
-
-        void OnHPChanged(int previousValue, int newValue)
-        {
-            if (IsServer)
-            {
-                if (m_Collider)
-                {
-                    m_Collider.enabled = !IsBroken;
-                }
-            }
-
-            if (previousValue > 0 && newValue >= 0)
-            {
-                Broken?.Invoke();
-                PerformBreakVisualization(false);
-            }
-            else if (previousValue == 0 && newValue > 0)
-            {
-                PerformUnbreakVisualization();
-            }
         }
 
         void PerformBreakVisualization(bool onStart)

@@ -86,3 +86,8 @@ InitCodeMarker
 .idea/**/usage.statistics.xml
 .idea/**/dictionaries
 .idea/**/shelf
+
+# Local dev
+.claude/
+.vscode/
+MasterServer/

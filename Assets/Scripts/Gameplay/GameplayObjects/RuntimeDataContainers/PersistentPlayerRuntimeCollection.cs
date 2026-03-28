@@ -14,7 +14,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         {
             for (int i = 0; i < Items.Count; i++)
             {
-                if (clientID == Items[i].OwnerClientId)
+                if (clientID == Items[i].OwnerConnectionId)
                 {
                     persistentPlayer = Items[i];
                     return true;

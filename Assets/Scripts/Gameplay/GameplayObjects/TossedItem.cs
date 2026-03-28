@@ -1,6 +1,5 @@
-using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -26,6 +25,12 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         LayerMask m_LayerMask;
 
         bool m_Started;
+
+        /// <summary>netId of the character that threw this item, for kill attribution.</summary>
+        uint m_ThrowerNetId;
+
+        /// <summary>Set by TossAction after spawning to track who threw this item.</summary>
+        public void SetThrower(uint throwerNetId) => m_ThrowerNetId = throwerNetId;
 
         const int k_MaxCollisions = 16;
 
@@ -60,49 +65,53 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         [SerializeField]
         AudioSource m_FallingSound;
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            if (IsServer)
-            {
-                m_Started = true;
-                m_Detonated = false;
+            base.OnStartServer();
+            m_Started = true;
+            m_Detonated = false;
 
-                m_DetonateTimer = Time.fixedTime + m_DetonateAfterSeconds;
-                m_DestroyTimer = Time.fixedTime + m_DestroyAfterSeconds;
-            }
-
-            if (IsClient)
-            {
-                m_TossedItemVisualTransform.gameObject.SetActive(true);
-                m_TossedObjectGraphics.SetActive(true);
-                m_FallingSound.Play();
-            }
+            m_DetonateTimer = Time.fixedTime + m_DetonateAfterSeconds;
+            m_DestroyTimer = Time.fixedTime + m_DestroyAfterSeconds;
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStartClient()
         {
-            if (IsServer)
-            {
-                m_Started = false;
-                m_Detonated = false;
-            }
+            base.OnStartClient();
+            m_TossedItemVisualTransform.gameObject.SetActive(true);
+            m_TossedObjectGraphics.SetActive(true);
+            m_FallingSound.Play();
+        }
 
-            if (IsClient)
-            {
-                m_TossedItemVisualTransform.gameObject.SetActive(false);
-            }
+        public override void OnStopServer()
+        {
+            base.OnStopServer();
+            m_Started = false;
+            m_Detonated = false;
+        }
 
+        public override void OnStopClient()
+        {
+            base.OnStopClient();
+            m_TossedItemVisualTransform.gameObject.SetActive(false);
         }
 
         void Detonate()
         {
+            // Resolve the thrower for kill attribution
+            ServerCharacter thrower = null;
+            if (m_ThrowerNetId != 0 && NetworkServer.spawned.TryGetValue(m_ThrowerNetId, out var throwerIdentity))
+            {
+                thrower = throwerIdentity.GetComponent<ServerCharacter>();
+            }
+
             var hits = Physics.OverlapSphereNonAlloc(transform.position, m_HitRadius, m_CollisionCache, m_LayerMask);
 
             for (int i = 0; i < hits; i++)
             {
                 if (m_CollisionCache[i].gameObject.TryGetComponent(out IDamageable damageReceiver))
                 {
-                    damageReceiver.ReceiveHitPoints(null, -m_DamagePoints);
+                    damageReceiver.ReceiveHitPoints(thrower, -m_DamagePoints);
 
                     var serverCharacter = m_CollisionCache[i].gameObject.GetComponentInParent<ServerCharacter>();
                     if (serverCharacter)
@@ -112,13 +121,13 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
                 }
             }
 
-            // send client RPC to detonate on clients
+            // send ClientRpc to detonate on clients
             ClientDetonateRpc();
 
             m_Detonated = true;
         }
 
-        [Rpc(SendTo.ClientsAndHost)]
+        [ClientRpc]
         void ClientDetonateRpc()
         {
             detonatedCallback?.Invoke();
@@ -126,11 +135,11 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
 
         void FixedUpdate()
         {
-            if (IsServer)
+            if (isServer)
             {
                 if (!m_Started)
                 {
-                    return; //don't do anything before OnNetworkSpawn has run.
+                    return; //don't do anything before OnStartServer has run.
                 }
 
                 if (!m_Detonated && m_DetonateTimer < Time.fixedTime)
@@ -140,16 +149,15 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
 
                 if (m_Detonated && m_DestroyTimer < Time.fixedTime)
                 {
-                    // despawn after sending detonate RPC
-                    var networkObject = gameObject.GetComponent<NetworkObject>();
-                    networkObject.Despawn();
+                    // unspawn after sending detonate RPC
+                    NetworkServer.UnSpawn(gameObject);
                 }
             }
         }
 
         void LateUpdate()
         {
-            if (IsClient)
+            if (isClient)
             {
                 var tossedItemPosition = transform.position;
                 m_TossedItemVisualTransform.SetPositionAndRotation(

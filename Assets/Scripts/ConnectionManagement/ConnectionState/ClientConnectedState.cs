@@ -1,6 +1,4 @@
-using Unity.BossRoom.UnityServices.Sessions;
 using UnityEngine;
-using VContainer;
 
 namespace Unity.BossRoom.ConnectionManagement
 {
@@ -10,22 +8,15 @@ namespace Unity.BossRoom.ConnectionManagement
     /// </summary>
     class ClientConnectedState : OnlineState
     {
-        [Inject]
-        protected MultiplayerServicesFacade m_MultiplayerServicesFacade;
-
-        public override void Enter()
-        {
-            if (m_MultiplayerServicesFacade.CurrentUnitySession != null)
-            {
-                m_MultiplayerServicesFacade.BeginTracking();
-            }
-        }
+        public override void Enter() { }
 
         public override void Exit() { }
 
         public override void OnClientDisconnect(ulong _)
         {
-            var disconnectReason = m_ConnectionManager.NetworkManager.DisconnectReason;
+            var disconnectReason = m_ConnectionManager.NetworkManager?.DisconnectReason ?? string.Empty;
+            m_ConnectionManager.NetworkManager?.ClearDisconnectReason();
+
             if (string.IsNullOrEmpty(disconnectReason) ||
                 disconnectReason == "Disconnected due to host shutting down.")
             {

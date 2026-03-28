@@ -1,7 +1,7 @@
 using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.Configuration;
 using Unity.BossRoom.Infrastructure;
-using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Serialization;
 using Avatar = Unity.BossRoom.Gameplay.Configuration.Avatar;
@@ -15,7 +15,8 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
     {
         [FormerlySerializedAs("AvatarGuidArray")]
         [HideInInspector]
-        public NetworkVariable<NetworkGuid> AvatarGuid = new NetworkVariable<NetworkGuid>();
+        [SyncVar(hook = nameof(OnAvatarGuidChanged))]
+        public NetworkGuid AvatarGuid;
 
         [SerializeField]
         AvatarRegistry m_AvatarRegistry;
@@ -28,7 +29,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
             {
                 if (m_Avatar == null)
                 {
-                    RegisterAvatar(AvatarGuid.Value.ToGuid());
+                    RegisterAvatar(AvatarGuid.ToGuid());
                 }
 
                 return m_Avatar;
@@ -37,7 +38,12 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
         public void SetRandomAvatar()
         {
-            AvatarGuid.Value = m_AvatarRegistry.GetRandomAvatar().Guid.ToNetworkGuid();
+            AvatarGuid = m_AvatarRegistry.GetRandomAvatar().Guid.ToNetworkGuid();
+        }
+
+        void OnAvatarGuidChanged(NetworkGuid oldValue, NetworkGuid newValue)
+        {
+            RegisterAvatar(newValue.ToGuid());
         }
 
         void RegisterAvatar(Guid guid)
@@ -57,7 +63,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
             if (m_Avatar != null)
             {
-                // already set, this is an idempotent call, we don't want to Instantiate twice
+                // already set, idempotent call — don't Instantiate twice
                 return;
             }
 

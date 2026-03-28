@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
 using Unity.BossRoom.VisualEffects;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 using BlockingMode = Unity.BossRoom.Gameplay.Actions.BlockingModeType;
 
@@ -263,8 +263,8 @@ namespace Unity.BossRoom.Gameplay.Actions
             bool isTargetEligible = true;
             if (data.ShouldClose == true)
             {
-                ulong targetId = (data.TargetIds != null && data.TargetIds.Length > 0) ? data.TargetIds[0] : 0;
-                if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetId, out NetworkObject networkObject))
+                uint targetId = (data.TargetIds != null && data.TargetIds.Length > 0) ? data.TargetIds[0] : 0;
+                if (NetworkClient.spawned.TryGetValue(targetId, out var networkObject))
                 {
                     float rangeSquared = actionDescription.Range * actionDescription.Range;
                     isTargetEligible = (networkObject.transform.position - clientCharacter.transform.position).sqrMagnitude < rangeSquared;

@@ -2,7 +2,7 @@ using System;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
 using Unity.BossRoom.Infrastructure;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.Actions
@@ -21,7 +21,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             serverCharacter.physicsWrapper.Transform.forward = Data.Direction;
 
             serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);
-            serverCharacter.clientCharacter.ClientPlayActionRpc(Data);
+            serverCharacter.ClientPlayActionRpc(Data);
             return true;
         }
 
@@ -70,7 +70,7 @@ namespace Unity.BossRoom.Gameplay.Actions
 
                 var projectileInfo = GetProjectileInfo();
 
-                NetworkObject no = NetworkObjectPool.Singleton.GetNetworkObject(projectileInfo.ProjectilePrefab, projectileInfo.ProjectilePrefab.transform.position, projectileInfo.ProjectilePrefab.transform.rotation);
+                NetworkIdentity no = NetworkObjectPool.Singleton.GetNetworkObject(projectileInfo.ProjectilePrefab, projectileInfo.ProjectilePrefab.transform.position, projectileInfo.ProjectilePrefab.transform.rotation);
                 // point the projectile the same way we're facing
                 no.transform.forward = parent.physicsWrapper.Transform.forward;
 
@@ -78,9 +78,9 @@ namespace Unity.BossRoom.Gameplay.Actions
                 //where it appears next to the player.
                 no.transform.position = parent.physicsWrapper.Transform.localToWorldMatrix.MultiplyPoint(no.transform.position);
 
-                no.GetComponent<PhysicsProjectile>().Initialize(parent.NetworkObjectId, projectileInfo);
+                no.GetComponent<PhysicsProjectile>().Initialize(parent.netId, projectileInfo);
 
-                no.Spawn(true);
+                NetworkServer.Spawn(no.gameObject);
             }
         }
 

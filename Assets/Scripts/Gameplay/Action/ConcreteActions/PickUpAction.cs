@@ -1,7 +1,7 @@
 using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Animations;
 
@@ -29,8 +29,8 @@ namespace Unity.BossRoom.Gameplay.Actions
             m_ActionStartTime = Time.time;
 
             // play pickup animation based if a heavy object is not already held
-            if (!NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(
-                    serverCharacter.HeldNetworkObject.Value, out var heldObject))
+            if (!NetworkServer.spawned.TryGetValue(
+                    serverCharacter.HeldNetworkObject, out var heldObject))
             {
                 if (!string.IsNullOrEmpty(Config.Anim))
                 {
@@ -58,24 +58,23 @@ namespace Unity.BossRoom.Gameplay.Actions
 
             Array.Sort(m_RaycastHits, 0, numResults, s_RaycastHitComparer);
 
-            // collider must contain "Heavy" tag, the heavy object must not be parented to another NetworkObject, and
-            // parenting attempt must be successful
-            if (numResults == 0 || !m_RaycastHits[0].collider.TryGetComponent(out NetworkObject heavyNetworkObject) ||
+            // collider must contain "Heavy" tag and the heavy object must not be parented to another NetworkIdentity
+            if (numResults == 0 || !m_RaycastHits[0].collider.TryGetComponent(out NetworkIdentity heavyNetworkObject) ||
                 !m_RaycastHits[0].collider.gameObject.CompareTag(k_HeavyTag) ||
                 (heavyNetworkObject.transform.parent != null &&
-                    heavyNetworkObject.transform.parent.TryGetComponent(out NetworkObject parentNetworkObject)) ||
-                !heavyNetworkObject.TrySetParent(parent.transform))
+                    heavyNetworkObject.transform.parent.TryGetComponent(out NetworkIdentity parentNetworkObject)))
             {
                 parent.serverAnimationHandler.NetworkAnimator.SetTrigger(k_FailedPickupTrigger);
                 return false;
             }
 
-            parent.HeldNetworkObject.Value = heavyNetworkObject.NetworkObjectId;
+            heavyNetworkObject.transform.SetParent(parent.transform);
+            parent.HeldNetworkObject = heavyNetworkObject.netId;
 
-            Data.TargetIds = new ulong[] { heavyNetworkObject.NetworkObjectId };
+            Data.TargetIds = new uint[] { heavyNetworkObject.netId };
 
             // clear current target on successful parenting attempt
-            parent.TargetId.Value = 0;
+            parent.TargetId = 0;
 
             // snap to face the right direction
             if (Data.Direction != Vector3.zero)
@@ -121,11 +120,11 @@ namespace Unity.BossRoom.Gameplay.Actions
         {
             if (serverCharacter.LifeState == LifeState.Fainted)
             {
-                if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(serverCharacter.HeldNetworkObject.Value, out var heavyNetworkObject))
+                if (NetworkServer.spawned.TryGetValue(serverCharacter.HeldNetworkObject, out var heavyNetworkObject))
                 {
                     heavyNetworkObject.transform.SetParent(null);
                 }
-                serverCharacter.HeldNetworkObject.Value = 0;
+                serverCharacter.HeldNetworkObject = 0;
             }
         }
     }

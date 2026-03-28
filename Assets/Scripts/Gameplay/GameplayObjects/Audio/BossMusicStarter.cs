@@ -25,20 +25,19 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Audio
             Assert.IsNotNull(m_NetworkLifeState, "NetworkLifeState not set!");
             Assert.IsNotNull(m_NetworkHealthState, "NetworkHealthState not set!");
 
-            m_NetworkLifeState.LifeState.OnValueChanged += OnLifeStateChanged;
-            m_NetworkHealthState.HitPoints.OnValueChanged += OnHealthChanged;
+            m_NetworkLifeState.LifeStateChanged += OnLifeStateChanged;
+            m_NetworkHealthState.HitPointsChanged += OnHealthChanged;
         }
 
         void OnDestroy()
         {
-            var serverCharacter = GetComponent<ServerCharacter>();
-            if (serverCharacter != null)
+            if (m_NetworkLifeState != null)
             {
-                serverCharacter.NetLifeState.LifeState.OnValueChanged -= OnLifeStateChanged;
-                if (serverCharacter.NetHealthState != null)
-                {
-                    serverCharacter.NetHealthState.HitPoints.OnValueChanged -= OnHealthChanged;
-                }
+                m_NetworkLifeState.LifeStateChanged -= OnLifeStateChanged;
+            }
+            if (m_NetworkHealthState != null)
+            {
+                m_NetworkHealthState.HitPointsChanged -= OnHealthChanged;
             }
         }
 

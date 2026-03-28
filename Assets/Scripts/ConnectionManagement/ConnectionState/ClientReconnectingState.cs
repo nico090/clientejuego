@@ -1,4 +1,3 @@
-using System;
 using System.Collections;
 using Unity.BossRoom.Infrastructure;
 using UnityEngine;
@@ -7,11 +6,7 @@ using VContainer;
 namespace Unity.BossRoom.ConnectionManagement
 {
     /// <summary>
-    /// Connection state corresponding to a client attempting to reconnect to a server. It will try to reconnect a
-    /// number of times defined by the ConnectionManager's NbReconnectAttempts property. If it succeeds, it will
-    /// transition to the ClientConnected state. If not, it will transition to the Offline state. If given a disconnect
-    /// reason first, depending on the reason given, may not try to reconnect again and transition directly to the
-    /// Offline state.
+    /// Connection state corresponding to a client attempting to reconnect to a server.
     /// </summary>
     class ClientReconnectingState : ClientConnectingState
     {
@@ -47,7 +42,9 @@ namespace Unity.BossRoom.ConnectionManagement
 
         public override void OnClientDisconnect(ulong _)
         {
-            var disconnectReason = m_ConnectionManager.NetworkManager.DisconnectReason;
+            var disconnectReason = m_ConnectionManager.NetworkManager?.DisconnectReason ?? string.Empty;
+            m_ConnectionManager.NetworkManager?.ClearDisconnectReason();
+
             if (m_NbAttempts < m_ConnectionManager.NbReconnectAttempts)
             {
                 if (string.IsNullOrEmpty(disconnectReason))
@@ -90,10 +87,6 @@ namespace Unity.BossRoom.ConnectionManagement
 
         IEnumerator ReconnectCoroutine()
         {
-            // If not on first attempt, wait some time before trying again, so that if the issue causing the disconnect
-            // is temporary, it has time to fix itself before we try again. Here we are using a simple fixed cooldown
-            // but we could want to use exponential backoff instead, to wait a longer time between each failed attempt.
-            // See https://en.wikipedia.org/wiki/Exponential_backoff
             if (m_NbAttempts > 0)
             {
                 yield return new WaitForSeconds(k_TimeBetweenAttempts);
@@ -103,13 +96,12 @@ namespace Unity.BossRoom.ConnectionManagement
 
             m_ConnectionManager.NetworkManager.Shutdown();
 
-            yield return new WaitWhile(() => m_ConnectionManager.NetworkManager.ShutdownInProgress); // wait until NetworkManager completes shutting down
+            // Mirror does not expose ShutdownInProgress; wait one frame for cleanup
+            yield return null;
+
             Debug.Log($"Reconnecting attempt {m_NbAttempts + 1}/{m_ConnectionManager.NbReconnectAttempts}...");
             m_ReconnectMessagePublisher.Publish(new ReconnectMessage(m_NbAttempts, m_ConnectionManager.NbReconnectAttempts));
 
-            // If first attempt, wait some time before attempting to reconnect to give time to services to update
-            // (i.e. if in a Session and the host shuts down unexpectedly, this will give enough time for the Session to be
-            // properly deleted so that we don't reconnect to an empty Session
             if (m_NbAttempts == 0)
             {
                 yield return new WaitForSeconds(k_TimeBeforeFirstAttempt);
@@ -121,18 +113,14 @@ namespace Unity.BossRoom.ConnectionManagement
 
             if (!reconnectingSetupTask.IsFaulted && reconnectingSetupTask.Result.success)
             {
-                // If this fails, the OnClientDisconnect callback will be invoked by Netcode
                 ConnectClientAsync();
             }
             else
             {
                 if (!reconnectingSetupTask.Result.shouldTryAgain)
                 {
-                    // setting number of attempts to max so no new attempts are made
                     m_NbAttempts = m_ConnectionManager.NbReconnectAttempts;
                 }
-                // Calling OnClientDisconnect to mark this attempt as failed and either start a new one or give up
-                // and return to the Offline state
                 OnClientDisconnect(0);
             }
         }

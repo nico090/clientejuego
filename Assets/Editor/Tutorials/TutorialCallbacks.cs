@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using Unity.Tutorials.Core.Editor;
 
-namespace Unity.Netcode.Samples.BossRoom
+namespace Unity.BossRoom.Editor
 {
     /// <summary>
     /// Implement your Tutorial callbacks here.

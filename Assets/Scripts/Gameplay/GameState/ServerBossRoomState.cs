@@ -1,15 +1,13 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Mirror;
 using Unity.BossRoom.ConnectionManagement;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
 using Unity.BossRoom.Gameplay.Messages;
 using Unity.BossRoom.Infrastructure;
 using Unity.BossRoom.Utils;
-using Unity.Multiplayer.Samples.BossRoom;
-using Unity.Multiplayer.Samples.Utilities;
-using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Assertions;
 using UnityEngine.SceneManagement;
@@ -22,19 +20,20 @@ namespace Unity.BossRoom.Gameplay.GameState
     /// <summary>
     /// Server specialization of core BossRoom game logic.
     /// </summary>
-    [RequireComponent(typeof(NetcodeHooks))]
+    [RequireComponent(typeof(NetworkHooks))]
     public class ServerBossRoomState : GameStateBehaviour
     {
         [FormerlySerializedAs("m_NetworkWinState")]
         [SerializeField]
         PersistentGameState persistentGameState;
 
+        [FormerlySerializedAs("m_NetcodeHooks")]
         [SerializeField]
-        NetcodeHooks m_NetcodeHooks;
+        NetworkHooks m_NetworkHooks;
 
         [SerializeField]
-        [Tooltip("Make sure this is included in the NetworkManager's list of prefabs!")]
-        private NetworkObject m_PlayerPrefab;
+        [Tooltip("Make sure this prefab has a NetworkIdentity component!")]
+        private GameObject m_PlayerPrefab;
 
         [SerializeField]
         [Tooltip("A collection of locations for spawning players")]
@@ -44,19 +43,14 @@ namespace Unity.BossRoom.Gameplay.GameState
 
         public override GameState ActiveState { get { return GameState.BossRoom; } }
 
-        // Wait time constants for switching to post game after the game is won or lost
-        private const float k_WinDelay = 7.0f;
-        private const float k_LoseDelay = 2.5f;
+        private const float k_PostMatchDelay = 7.0f;
+        private const float k_RespawnDelay = 5.0f;
 
         /// <summary>
-        /// Has the ServerBossRoomState already hit its initial spawn? (i.e. spawned players following load from character select).
+        /// Has the ServerBossRoomState already hit its initial spawn?
         /// </summary>
         public bool InitialSpawnDone { get; private set; }
 
-        /// <summary>
-        /// Keeping the subscriber during this GameState's lifetime to allow disposing of subscription and re-subscribing
-        /// when despawning and spawning again.
-        /// </summary>
         [Inject] ISubscriber<LifeStateChangedEventMessage> m_LifeStateChangedEventMessageSubscriber;
 
         [Inject] ConnectionManager m_ConnectionManager;
@@ -65,13 +59,13 @@ namespace Unity.BossRoom.Gameplay.GameState
         protected override void Awake()
         {
             base.Awake();
-            m_NetcodeHooks.OnNetworkSpawnHook += OnNetworkSpawn;
-            m_NetcodeHooks.OnNetworkDespawnHook += OnNetworkDespawn;
+            m_NetworkHooks.OnNetworkSpawn += OnNetworkSpawn;
+            m_NetworkHooks.OnNetworkDespawn += OnNetworkDespawn;
         }
 
         void OnNetworkSpawn()
         {
-            if (!NetworkManager.Singleton.IsServer)
+            if (!NetworkServer.active)
             {
                 enabled = false;
                 return;
@@ -79,11 +73,24 @@ namespace Unity.BossRoom.Gameplay.GameState
             m_PersistentGameState.Reset();
             m_LifeStateChangedEventMessageSubscriber.Subscribe(OnLifeStateChangedEventMessage);
 
-            NetworkManager.Singleton.OnConnectionEvent += OnConnectionEvent;
-            NetworkManager.Singleton.SceneManager.OnLoadEventCompleted += OnLoadEventCompleted;
-            NetworkManager.Singleton.SceneManager.OnSynchronizeComplete += OnSynchronizeComplete;
+            BossRoomNetworkManager.singleton.OnServerClientDisconnected += OnServerClientDisconnected;
+            BossRoomNetworkManager.singleton.OnServerSceneChangedEvent += OnServerSceneChanged;
+            BossRoomNetworkManager.singleton.OnServerClientConnected += OnServerClientConnected;
+
+            // Ensure PvPScoreManager exists on this same networked GameObject
+            EnsurePvPScoreManager();
 
             SessionManager<SessionPlayerData>.Instance.OnSessionStarted();
+        }
+
+        void EnsurePvPScoreManager()
+        {
+            if (PvPScoreManager.Instance == null)
+            {
+                // Add to this GameObject which already has NetworkIdentity
+                gameObject.AddComponent<PvPScoreManager>();
+            }
+            PvPScoreManager.Instance.MatchEnded += OnPvPMatchEnded;
         }
 
         void OnNetworkDespawn()
@@ -93,9 +100,17 @@ namespace Unity.BossRoom.Gameplay.GameState
                 m_LifeStateChangedEventMessageSubscriber.Unsubscribe(OnLifeStateChangedEventMessage);
             }
 
-            NetworkManager.Singleton.OnConnectionEvent -= OnConnectionEvent;
-            NetworkManager.Singleton.SceneManager.OnLoadEventCompleted -= OnLoadEventCompleted;
-            NetworkManager.Singleton.SceneManager.OnSynchronizeComplete -= OnSynchronizeComplete;
+            if (PvPScoreManager.Instance != null)
+            {
+                PvPScoreManager.Instance.MatchEnded -= OnPvPMatchEnded;
+            }
+
+            if (BossRoomNetworkManager.singleton)
+            {
+                BossRoomNetworkManager.singleton.OnServerClientDisconnected -= OnServerClientDisconnected;
+                BossRoomNetworkManager.singleton.OnServerSceneChangedEvent -= OnServerSceneChanged;
+                BossRoomNetworkManager.singleton.OnServerClientConnected -= OnServerClientConnected;
+            }
         }
 
         protected override void OnDestroy()
@@ -105,56 +120,65 @@ namespace Unity.BossRoom.Gameplay.GameState
                 m_LifeStateChangedEventMessageSubscriber.Unsubscribe(OnLifeStateChangedEventMessage);
             }
 
-            if (m_NetcodeHooks)
+            if (PvPScoreManager.Instance != null)
             {
-                m_NetcodeHooks.OnNetworkSpawnHook -= OnNetworkSpawn;
-                m_NetcodeHooks.OnNetworkDespawnHook -= OnNetworkDespawn;
+                PvPScoreManager.Instance.MatchEnded -= OnPvPMatchEnded;
+            }
+
+            if (m_NetworkHooks)
+            {
+                m_NetworkHooks.OnNetworkSpawn -= OnNetworkSpawn;
+                m_NetworkHooks.OnNetworkDespawn -= OnNetworkDespawn;
+            }
+
+            if (BossRoomNetworkManager.singleton)
+            {
+                BossRoomNetworkManager.singleton.OnServerClientDisconnected -= OnServerClientDisconnected;
+                BossRoomNetworkManager.singleton.OnServerSceneChangedEvent -= OnServerSceneChanged;
+                BossRoomNetworkManager.singleton.OnServerClientConnected -= OnServerClientConnected;
             }
 
             base.OnDestroy();
         }
 
-        void OnSynchronizeComplete(ulong clientId)
+        /// <summary>
+        /// Called when a client finishes synchronizing — handles late-join scenario.
+        /// </summary>
+        void OnServerClientConnected(NetworkConnectionToClient conn)
         {
+            if (this == null) return; // guard against callbacks on destroyed object
+            ulong clientId = (ulong)conn.connectionId;
             if (InitialSpawnDone && !PlayerServerCharacter.GetPlayerServerCharacter(clientId))
             {
-                //somebody joined after the initial spawn. This is a Late Join scenario. This player may have issues
-                //(either because multiple people are late-joining at once, or because some dynamic entities are
-                //getting spawned while joining. But that's not something we can fully address by changes in
-                //ServerBossRoomState.
                 SpawnPlayer(clientId, true);
             }
         }
 
-        void OnLoadEventCompleted(string sceneName, LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
+        /// <summary>
+        /// Called when the server finishes loading the new scene — triggers initial player spawn.
+        /// </summary>
+        void OnServerSceneChanged(string sceneName)
         {
-            if (!InitialSpawnDone && loadSceneMode == LoadSceneMode.Single)
+            if (!InitialSpawnDone)
             {
                 InitialSpawnDone = true;
-                foreach (var kvp in NetworkManager.Singleton.ConnectedClients)
+                foreach (var kvp in NetworkServer.connections)
                 {
-                    SpawnPlayer(kvp.Key, false);
+                    SpawnPlayer((ulong)kvp.Key, false);
+                }
+
+                // Start the PvP match after all players have spawned
+                if (PvPScoreManager.Instance != null)
+                {
+                    PvPScoreManager.Instance.StartMatch();
                 }
             }
         }
 
-        void OnConnectionEvent(NetworkManager networkManager, ConnectionEventData connectionEventData)
+        void OnServerClientDisconnected(NetworkConnectionToClient conn)
         {
-            if (connectionEventData.EventType == ConnectionEvent.ClientDisconnected)
-            {
-                if (connectionEventData.ClientId != networkManager.LocalClientId)
-                {
-                    // If a client disconnects, check for game over in case all other players are already down
-                    StartCoroutine(WaitToCheckForGameOver());
-                }
-            }
-        }
-
-        IEnumerator WaitToCheckForGameOver()
-        {
-            // Wait until next frame so that the client's player character has despawned
-            yield return null;
-            CheckForGameOver();
+            // In PvP mode, disconnecting players are unregistered from the score system.
+            // The match continues for remaining players.
         }
 
         void SpawnPlayer(ulong clientId, bool lateJoin)
@@ -173,7 +197,12 @@ namespace Unity.BossRoom.Gameplay.GameState
             spawnPoint = m_PlayerSpawnPointsList[index];
             m_PlayerSpawnPointsList.RemoveAt(index);
 
-            var playerNetworkObject = NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(clientId);
+            // Get the player's persistent object (PersistentPlayer) from their connection
+            GameObject persistentPlayerGO = null;
+            if (NetworkServer.connections.TryGetValue((int)clientId, out var conn) && conn.identity != null)
+            {
+                persistentPlayerGO = conn.identity.gameObject;
+            }
 
             var newPlayer = Instantiate(m_PlayerPrefab, Vector3.zero, Quaternion.identity);
 
@@ -186,18 +215,18 @@ namespace Unity.BossRoom.Gameplay.GameState
                 physicsTransform.SetPositionAndRotation(spawnPoint.position, spawnPoint.rotation);
             }
 
-            var persistentPlayerExists = playerNetworkObject.TryGetComponent(out PersistentPlayer persistentPlayer);
+            PersistentPlayer persistentPlayer = null;
+            var persistentPlayerExists = persistentPlayerGO != null &&
+                persistentPlayerGO.TryGetComponent(out persistentPlayer);
             Assert.IsTrue(persistentPlayerExists,
                 $"Matching persistent PersistentPlayer for client {clientId} not found!");
 
-            // pass character type from persistent player to avatar
             var networkAvatarGuidStateExists =
                 newPlayer.TryGetComponent(out NetworkAvatarGuidState networkAvatarGuidState);
 
             Assert.IsTrue(networkAvatarGuidStateExists,
                 $"NetworkCharacterGuidState not found on player avatar!");
 
-            // if reconnecting, set the player's position and rotation to its previous state
             if (lateJoin)
             {
                 SessionPlayerData? sessionPlayerData = SessionManager<SessionPlayerData>.Instance.GetPlayerData(clientId);
@@ -207,17 +236,26 @@ namespace Unity.BossRoom.Gameplay.GameState
                 }
             }
 
-            // instantiate new NetworkVariables with a default value to ensure they're ready for use on OnNetworkSpawn
-            networkAvatarGuidState.AvatarGuid = new NetworkVariable<NetworkGuid>(persistentPlayer.NetworkAvatarGuidState.AvatarGuid.Value);
+            // Copy avatar GUID and name from PersistentPlayer before spawning
+            networkAvatarGuidState.AvatarGuid = persistentPlayer.NetworkAvatarGuidState.AvatarGuid;
 
-            // pass name from persistent player to avatar
             if (newPlayer.TryGetComponent(out NetworkNameState networkNameState))
             {
-                networkNameState.Name = new NetworkVariable<FixedPlayerName>(persistentPlayer.NetworkNameState.Name.Value);
+                networkNameState.SetName(persistentPlayer.NetworkNameState.Name);
             }
 
-            // spawn players characters with destroyWithScene = true
-            newPlayer.SpawnWithOwnership(clientId, true);
+            // Spawn with ownership assigned to the client's connection
+            NetworkServer.Spawn(newPlayer, conn);
+
+            // Register player in PvP score system
+            if (PvPScoreManager.Instance != null)
+            {
+                var netId = newPlayer.GetComponent<NetworkIdentity>().netId;
+                string playerName = networkNameState != null
+                    ? (string)networkNameState.Name
+                    : $"Player {netId}";
+                PvPScoreManager.Instance.RegisterPlayer(netId, playerName);
+            }
         }
 
         void OnLifeStateChangedEventMessage(LifeStateChangedEventMessage message)
@@ -228,54 +266,78 @@ namespace Unity.BossRoom.Gameplay.GameState
                 case CharacterTypeEnum.Archer:
                 case CharacterTypeEnum.Mage:
                 case CharacterTypeEnum.Rogue:
-                    // Every time a player's life state changes to fainted we check to see if game is over
                     if (message.NewLifeState == LifeState.Fainted)
                     {
-                        CheckForGameOver();
+                        // PvP: respawn player after delay
+                        var serverChar = message.ServerCharacter;
+                        if (serverChar != null)
+                        {
+                            StartCoroutine(CoroRespawnPlayer(serverChar));
+                        }
                     }
-
                     break;
                 case CharacterTypeEnum.ImpBoss:
-                    if (message.NewLifeState == LifeState.Dead)
-                    {
-                        BossDefeated();
-                    }
+                    // NPCs dying is normal in PvP — no special handling needed
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
         }
 
-        void CheckForGameOver()
+        IEnumerator CoroRespawnPlayer(ServerCharacter serverCharacter)
         {
-            // Check the life state of all players in the scene
-            foreach (var serverCharacter in PlayerServerCharacter.GetPlayerServerCharacters())
+            yield return new WaitForSeconds(k_RespawnDelay);
+
+            if (serverCharacter == null || serverCharacter.LifeState != LifeState.Fainted)
+                yield break;
+
+            // Pick a random spawn point
+            Transform spawnPoint = m_PlayerSpawnPoints[Random.Range(0, m_PlayerSpawnPoints.Length)];
+
+            // Reposition at spawn point
+            var physicsTransform = serverCharacter.physicsWrapper.Transform;
+            physicsTransform.SetPositionAndRotation(spawnPoint.position, spawnPoint.rotation);
+
+            // Revive with full HP
+            serverCharacter.Revive(null, serverCharacter.CharacterClass.BaseHP.Value);
+        }
+
+        void OnPvPMatchEnded()
+        {
+            // Store winner info for CharSelect to display
+            if (PvPScoreManager.Instance != null)
             {
-                // if any player is alive just return
-                if (serverCharacter && serverCharacter.LifeState == LifeState.Alive)
+                string winnerName = PvPScoreManager.Instance.GetWinnerName();
+                uint winnerNetId = PvPScoreManager.Instance.GetWinnerNetId();
+
+                // Find the connection ID (clientId) for the winner by netId
+                ulong winnerClientId = 0;
+                foreach (var kvp in NetworkServer.connections)
                 {
-                    return;
+                    if (kvp.Value?.identity != null)
+                    {
+                        // Check owned objects for the player avatar with matching netId
+                        foreach (var owned in kvp.Value.owned)
+                        {
+                            if (owned.netId == winnerNetId)
+                            {
+                                winnerClientId = (ulong)kvp.Key;
+                                break;
+                            }
+                        }
+                    }
                 }
+
+                m_PersistentGameState.SetMatchResult(winnerName, winnerClientId);
             }
 
-            // If we made it this far, all players are down! switch to post game
-            StartCoroutine(CoroGameOver(k_LoseDelay, false));
+            StartCoroutine(CoroGoToCharSelect());
         }
 
-        void BossDefeated()
+        IEnumerator CoroGoToCharSelect()
         {
-            // Boss is dead - set game won to true
-            StartCoroutine(CoroGameOver(k_WinDelay, true));
-        }
-
-        IEnumerator CoroGameOver(float wait, bool gameWon)
-        {
-            m_PersistentGameState.SetWinState(gameWon ? WinState.Win : WinState.Loss);
-
-            // wait 5 seconds for game animations to finish
-            yield return new WaitForSeconds(wait);
-
-            SceneLoaderWrapper.Instance.LoadScene("PostGame", useNetworkSceneManager: true);
+            yield return new WaitForSeconds(k_PostMatchDelay);
+            SceneLoaderWrapper.Instance.LoadScene("CharSelect", useNetworkSceneManager: true);
         }
     }
 }

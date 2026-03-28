@@ -1,12 +1,12 @@
-using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.UserInput;
-using Unity.Netcode;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.UI
 {
     /// <summary>
-    /// Responsible for managing and creating a feedback icon where the player clicked to move
+    /// Responsible for managing and creating a feedback icon where the player clicked to move.
+    /// Only runs on the local player's instance.
     /// </summary>
     [RequireComponent(typeof(ClientInputSender))]
     public class ClientClickFeedback : NetworkBehaviour
@@ -20,10 +20,9 @@ namespace Unity.BossRoom.Gameplay.UI
 
         ClickFeedbackLerper m_ClickFeedbackLerper;
 
-
         void Start()
         {
-            if (NetworkManager.Singleton.LocalClientId != OwnerClientId)
+            if (!isLocalPlayer)
             {
                 enabled = false;
                 return;
@@ -42,14 +41,13 @@ namespace Unity.BossRoom.Gameplay.UI
             m_ClickFeedbackLerper.SetTarget(position);
         }
 
-        public override void OnDestroy()
+        public override void OnStopClient()
         {
-            base.OnDestroy();
+            base.OnStopClient();
             if (m_ClientSender)
             {
                 m_ClientSender.ClientMoveEvent -= OnClientMove;
             }
-
         }
     }
 }

@@ -2,16 +2,10 @@
     "name": "Unity.BossRoom.ConnectionManagement",
     "rootNamespace": "",
     "references": [
-        "Unity.Netcode.Runtime",
-        "Unity.Multiplayer.Samples.Utilities",
-        "Unity.BossRoom.UnityServices",
+        "Mirror",
         "Unity.BossRoom.Infrastructure",
-        "Unity.Services.Core",
-        "Unity.Services.Authentication",
         "Unity.BossRoom.Utils",
-        "Unity.Networking.Transport",
-        "VContainer",
-        "Unity.Services.Multiplayer"
+        "VContainer"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

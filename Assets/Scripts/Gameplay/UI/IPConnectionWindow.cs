@@ -3,8 +3,6 @@ using System.Collections;
 using TMPro;
 using Unity.BossRoom.ConnectionManagement;
 using Unity.BossRoom.Infrastructure;
-using Unity.Netcode;
-using Unity.Netcode.Transports.UTP;
 using UnityEngine;
 using VContainer;
 
@@ -17,6 +15,9 @@ namespace Unity.BossRoom.Gameplay.UI
 
         [SerializeField]
         TextMeshProUGUI m_TitleText;
+
+        // Default connection timeout shown in the UI (seconds)
+        const int k_DefaultConnectionTimeoutSeconds = 10;
 
         [Inject] IPUIMediator m_IPUIMediator;
 
@@ -68,11 +69,7 @@ namespace Unity.BossRoom.Gameplay.UI
                 m_IPUIMediator.DisableSignInSpinner();
             }
 
-            var utp = (UnityTransport)NetworkManager.Singleton.NetworkConfig.NetworkTransport;
-            var maxConnectAttempts = utp.MaxConnectAttempts;
-            var connectTimeoutMS = utp.ConnectTimeoutMS;
-            StartCoroutine(DisplayUTPConnectionDuration(maxConnectAttempts, connectTimeoutMS, OnTimeElapsed));
-
+            StartCoroutine(DisplayConnectionDuration(k_DefaultConnectionTimeoutSeconds, OnTimeElapsed));
             Show();
         }
 
@@ -82,11 +79,9 @@ namespace Unity.BossRoom.Gameplay.UI
             StopAllCoroutines();
         }
 
-        IEnumerator DisplayUTPConnectionDuration(int maxReconnectAttempts, int connectTimeoutMS, Action endAction)
+        IEnumerator DisplayConnectionDuration(int totalSeconds, Action endAction)
         {
-            var connectionDuration = maxReconnectAttempts * connectTimeoutMS / 1000f;
-
-            var seconds = Mathf.CeilToInt(connectionDuration);
+            var seconds = totalSeconds;
 
             while (seconds > 0)
             {

@@ -1,8 +1,7 @@
-using System;
 using System.Collections;
 using System.Collections.Generic;
+using Mirror;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects
@@ -15,7 +14,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
     {
         // networked object that will be spawned in waves
         [SerializeField]
-        NetworkObject m_NetworkedPrefab;
+        NetworkIdentity m_NetworkedPrefab;
 
         [SerializeField]
         [Tooltip("Each spawned enemy appears at one of the points in this list")]
@@ -82,7 +81,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         // cache array of RaycastHit as it will be reused for player visibility
         RaycastHit[] m_Hit;
 
-        // indicates whether OnNetworkSpawn() has been called on us yet
+        // indicates whether OnStartServer() has been called on us yet
         bool m_IsStarted;
 
         // are we currently spawning stuff?
@@ -92,20 +91,16 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         int m_SpawnedCount;
 
         // the currently-spawned entities. We only bother to track these if m_MaxActiveSpawns is non-zero
-        List<NetworkObject> m_ActiveSpawns = new List<NetworkObject>();
+        List<NetworkIdentity> m_ActiveSpawns = new List<NetworkIdentity>();
 
         void Awake()
         {
             m_Transform = transform;
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            if (!IsServer)
-            {
-                enabled = false;
-                return;
-            }
+            base.OnStartServer();
             m_Hit = new RaycastHit[1];
             m_IsStarted = true;
             if (m_IsSpawnerEnabled)
@@ -150,8 +145,9 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
             m_WatchForPlayers = null;
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopServer()
         {
+            base.OnStopServer();
             StopWaveSpawning();
         }
 
@@ -175,7 +171,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         /// Coroutine for spawning prefabs clones in waves, waiting a duration before spawning a new wave.
         /// Once all waves are completed, it waits a restart time before termination.
         /// </summary>
-        /// <returns></returns>
         IEnumerator SpawnWaves()
         {
             m_WaveIndex = 0;
@@ -195,7 +190,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         /// <summary>
         /// Coroutine that spawns a wave of prefab clones, with some time between spawns.
         /// </summary>
-        /// <returns></returns>
         IEnumerator SpawnWave()
         {
             for (int i = 0; i < m_SpawnsPerWave; i++)
@@ -213,9 +207,9 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         }
 
         /// <summary>
-        /// Spawn a NetworkObject prefab clone.
+        /// Instantiate and spawn a NetworkIdentity prefab clone on the server.
         /// </summary>
-        NetworkObject SpawnPrefab()
+        NetworkIdentity SpawnPrefab()
         {
             if (m_NetworkedPrefab == null)
             {
@@ -224,10 +218,8 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
 
             int posIdx = m_SpawnedCount++ % m_SpawnPositions.Count;
             var clone = Instantiate(m_NetworkedPrefab, m_SpawnPositions[posIdx].position, m_SpawnPositions[posIdx].rotation);
-            if (!clone.IsSpawned)
-            {
-                clone.Spawn(true);
-            }
+            NetworkServer.Spawn(clone.gameObject);
+
             if (m_SpawnedEntityDetectDistance > -1)
             {
                 // need to override the spawned creature's detection range (if they even have a detection range!)
@@ -245,7 +237,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         {
             // references to spawned components that no longer exist will become null,
             // so clear those out. Then we know how many we have left
-            m_ActiveSpawns.RemoveAll(spawnedNetworkObject => { return spawnedNetworkObject == null; });
+            m_ActiveSpawns.RemoveAll(spawnedIdentity => { return spawnedIdentity == null; });
             return m_ActiveSpawns.Count < GetCurrentSpawnCap();
         }
 
@@ -259,7 +251,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
             int numPlayers = 0;
             foreach (var serverCharacter in PlayerServerCharacter.GetPlayerServerCharacters())
             {
-                if (serverCharacter.NetLifeState.LifeState.Value == LifeState.Alive)
+                if (serverCharacter.NetLifeState.LifeState == LifeState.Alive)
                 {
                     ++numPlayers;
                 }
@@ -271,7 +263,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         /// <summary>
         /// Determines whether any player is within range & visible through RaycastNonAlloc check.
         /// </summary>
-        /// <returns> True if visible and within range, else false. </returns>
         bool IsAnyPlayerNearbyAndVisible()
         {
             var spawnerPosition = m_Transform.position;
@@ -285,7 +276,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
             // and is not occluded by a blocking collider.
             foreach (var serverCharacter in PlayerServerCharacter.GetPlayerServerCharacters())
             {
-                if (!m_DetectStealthyPlayers && serverCharacter.IsStealthy.Value)
+                if (!m_DetectStealthyPlayers && serverCharacter.IsStealthy)
                 {
                     // we don't detect stealthy players
                     continue;

@@ -24,9 +24,9 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         int GetTotalDamage();
 
         /// <summary>
-        /// The NetworkId of this object.
+        /// The Mirror netId of this object.
         /// </summary>
-        ulong NetworkObjectId { get; }
+        uint netId { get; }
 
         /// <summary>
         /// The transform of this object.
@@ -56,4 +56,3 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         bool IsDamageable();
     }
 }
-

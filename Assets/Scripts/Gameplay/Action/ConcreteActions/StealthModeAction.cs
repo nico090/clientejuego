@@ -28,7 +28,7 @@ namespace Unity.BossRoom.Gameplay.Actions
         {
             serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);
 
-            serverCharacter.clientCharacter.ClientPlayActionRpc(Data);
+            serverCharacter.ClientPlayActionRpc(Data);
 
             return true;
         }
@@ -52,7 +52,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             {
                 // start actual stealth-mode... NOW!
                 m_IsStealthStarted = true;
-                clientCharacter.IsStealthy.Value = true;
+                clientCharacter.IsStealthy = true;
             }
             return !m_IsStealthEnded;
         }
@@ -83,20 +83,20 @@ namespace Unity.BossRoom.Gameplay.Actions
                 m_IsStealthEnded = true;
                 if (m_IsStealthStarted)
                 {
-                    parent.IsStealthy.Value = false;
+                    parent.IsStealthy = false;
                 }
 
                 // note that we cancel the ActionFX here, and NOT in Cancel(). That's to handle the case where someone
                 // presses the Stealth button twice in a row: "end this Stealth action and start a new one". If we cancelled
                 // all actions of this type in Cancel(), we'd end up cancelling both the old AND the new one, because
                 // the new one would already be in the clients' actionFX queue.
-                parent.clientCharacter.ClientCancelActionsByPrototypeIDRpc(ActionID);
+                parent.ClientCancelActionsByPrototypeIDRpc(ActionID);
             }
         }
 
         public override bool OnUpdateClient(ClientCharacter clientCharacter)
         {
-            if (TimeRunning >= Config.ExecTimeSeconds && m_SpawnedGraphics == null && clientCharacter.IsOwner)
+            if (TimeRunning >= Config.ExecTimeSeconds && m_SpawnedGraphics == null && clientCharacter.serverCharacter.isOwned)
             {
                 m_SpawnedGraphics = InstantiateSpecialFXGraphics(clientCharacter.transform, true);
             }

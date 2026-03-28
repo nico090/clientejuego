@@ -1,12 +1,11 @@
 using System;
 using System.Collections;
+using Mirror;
 using Unity.BossRoom.ConnectionManagement;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Infrastructure;
-using Unity.Multiplayer.Samples.BossRoom;
-using Unity.Multiplayer.Samples.Utilities;
-using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.Serialization;
 using VContainer;
 
 namespace Unity.BossRoom.Gameplay.GameState
@@ -14,11 +13,12 @@ namespace Unity.BossRoom.Gameplay.GameState
     /// <summary>
     /// Server specialization of Character Select game state.
     /// </summary>
-    [RequireComponent(typeof(NetcodeHooks), typeof(NetworkCharSelection))]
+    [RequireComponent(typeof(NetworkHooks), typeof(NetworkCharSelection))]
     public class ServerCharSelectState : GameStateBehaviour
     {
+        [FormerlySerializedAs("m_NetcodeHooks")]
         [SerializeField]
-        NetcodeHooks m_NetcodeHooks;
+        NetworkHooks m_NetworkHooks;
 
         public override GameState ActiveState => GameState.CharSelect;
         public NetworkCharSelection networkCharSelection { get; private set; }
@@ -28,23 +28,76 @@ namespace Unity.BossRoom.Gameplay.GameState
         [Inject]
         ConnectionManager m_ConnectionManager;
 
+        [Inject]
+        PersistentGameState m_PersistentGameState;
+
         protected override void Awake()
         {
             base.Awake();
             networkCharSelection = GetComponent<NetworkCharSelection>();
 
-            m_NetcodeHooks.OnNetworkSpawnHook += OnNetworkSpawn;
-            m_NetcodeHooks.OnNetworkDespawnHook += OnNetworkDespawn;
+            if (m_NetworkHooks == null)
+            {
+                m_NetworkHooks = GetComponent<NetworkHooks>();
+            }
+
+            m_NetworkHooks.OnNetworkSpawn += OnNetworkSpawn;
+            m_NetworkHooks.OnNetworkDespawn += OnNetworkDespawn;
         }
 
         protected override void OnDestroy()
         {
             base.OnDestroy();
 
-            if (m_NetcodeHooks)
+            if (m_NetworkHooks)
             {
-                m_NetcodeHooks.OnNetworkSpawnHook -= OnNetworkSpawn;
-                m_NetcodeHooks.OnNetworkDespawnHook -= OnNetworkDespawn;
+                m_NetworkHooks.OnNetworkSpawn -= OnNetworkSpawn;
+                m_NetworkHooks.OnNetworkDespawn -= OnNetworkDespawn;
+            }
+
+            // Safety: unsubscribe from BossRoomNetworkManager events in case
+            // OnNetworkDespawn didn't fire before this object was destroyed.
+            if (BossRoomNetworkManager.singleton)
+            {
+                BossRoomNetworkManager.singleton.OnServerClientDisconnected -= OnServerClientDisconnected;
+                BossRoomNetworkManager.singleton.OnServerClientConnected -= OnServerClientConnected;
+            }
+            if (networkCharSelection)
+            {
+                networkCharSelection.OnClientChangedSeat -= OnClientChangedSeat;
+                networkCharSelection.OnClientChangedName -= OnClientChangedName;
+            }
+        }
+
+        void OnClientChangedName(ulong clientId, string newName)
+        {
+            if (string.IsNullOrWhiteSpace(newName)) return;
+
+            // Update in session player list (for display in CharSelect UI)
+            int idx = FindSessionPlayerIdx(clientId);
+            if (idx != -1)
+            {
+                var old = networkCharSelection.sessionPlayers[idx];
+                networkCharSelection.sessionPlayers[idx] = new NetworkCharSelection.SessionPlayerState(
+                    old.ClientId, newName, old.PlayerNumber, old.SeatState, old.SeatIdx, old.LastChangeTime);
+            }
+
+            // Update SessionPlayerData so the name persists to gameplay
+            var sessionData = SessionManager<SessionPlayerData>.Instance.GetPlayerData(clientId);
+            if (sessionData.HasValue)
+            {
+                var data = sessionData.Value;
+                data.PlayerName = newName;
+                SessionManager<SessionPlayerData>.Instance.SetPlayerData(clientId, data);
+            }
+
+            // Update PersistentPlayer's NetworkNameState
+            if (NetworkServer.connections.TryGetValue((int)clientId, out var conn) && conn.identity != null)
+            {
+                if (conn.identity.TryGetComponent(out PersistentPlayer persistentPlayer))
+                {
+                    persistentPlayer.NetworkNameState.SetName(newName);
+                }
             }
         }
 
@@ -56,32 +109,26 @@ namespace Unity.BossRoom.Gameplay.GameState
                 throw new Exception($"OnClientChangedSeat: client ID {clientId} is not a Session player and cannot change seats! Shouldn't be here!");
             }
 
-            if (networkCharSelection.IsSessionClosed.Value)
+            if (networkCharSelection.IsSessionClosed)
             {
-                // The user tried to change their class after everything was locked in... too late! Discard this choice
+                // The user tried to change their class after everything was locked in... too late!
                 return;
             }
 
             if (newSeatIdx == -1)
             {
-                // we can't lock in with no seat
                 lockedIn = false;
             }
             else
             {
-                // see if someone has already locked-in that seat! If so, too late... discard this choice
                 foreach (NetworkCharSelection.SessionPlayerState playerInfo in networkCharSelection.sessionPlayers)
                 {
                     if (playerInfo.ClientId != clientId && playerInfo.SeatIdx == newSeatIdx && playerInfo.SeatState == NetworkCharSelection.SeatState.LockedIn)
                     {
-                        // somebody already locked this choice in. Stop!
-                        // Instead of granting lock request, change this player to Inactive state.
                         networkCharSelection.sessionPlayers[idx] = new NetworkCharSelection.SessionPlayerState(clientId,
                             networkCharSelection.sessionPlayers[idx].PlayerName,
                             networkCharSelection.sessionPlayers[idx].PlayerNumber,
                             NetworkCharSelection.SeatState.Inactive);
-
-                        // then early out
                         return;
                     }
                 }
@@ -96,13 +143,10 @@ namespace Unity.BossRoom.Gameplay.GameState
 
             if (lockedIn)
             {
-                // to help the clients visually keep track of who's in what seat, we'll "kick out" any other players
-                // who were also in that seat. (Those players didn't click "Ready!" fast enough, somebody else took their seat!)
                 for (int i = 0; i < networkCharSelection.sessionPlayers.Count; ++i)
                 {
                     if (networkCharSelection.sessionPlayers[i].SeatIdx == newSeatIdx && i != idx)
                     {
-                        // change this player to Inactive state.
                         networkCharSelection.sessionPlayers[i] = new NetworkCharSelection.SessionPlayerState(
                             networkCharSelection.sessionPlayers[i].ClientId,
                             networkCharSelection.sessionPlayers[i].PlayerName,
@@ -115,9 +159,6 @@ namespace Unity.BossRoom.Gameplay.GameState
             CloseSessionIfReady();
         }
 
-        /// <summary>
-        /// Returns the index of a client in the master SessionPlayer list, or -1 if not found
-        /// </summary>
         int FindSessionPlayerIdx(ulong clientId)
         {
             for (int i = 0; i < networkCharSelection.sessionPlayers.Count; ++i)
@@ -128,52 +169,41 @@ namespace Unity.BossRoom.Gameplay.GameState
             return -1;
         }
 
-        /// <summary>
-        /// Looks through all our connections and sees if everyone has locked in their choice;
-        /// if so, we lock in the whole Session, save state, and begin the transition to gameplay
-        /// </summary>
         void CloseSessionIfReady()
         {
             foreach (NetworkCharSelection.SessionPlayerState playerInfo in networkCharSelection.sessionPlayers)
             {
                 if (playerInfo.SeatState != NetworkCharSelection.SeatState.LockedIn)
-                    return; // nope, at least one player isn't locked in yet!
+                    return;
             }
 
-            // everybody's ready at the same time! Lock it down!
-            networkCharSelection.IsSessionClosed.Value = true;
+            networkCharSelection.IsSessionClosed = true;
 
-            // remember our choices so the next scene can use the info
             SaveSessionResults();
 
-            // Delay a few seconds to give the UI time to react, then switch scenes
             m_WaitToEndSessionCoroutine = StartCoroutine(WaitToEndSession());
         }
 
-        /// <summary>
-        /// Cancels the process of closing the Session, so that if a new player joins, they are able to choose a character.
-        /// </summary>
         void CancelCloseSession()
         {
             if (m_WaitToEndSessionCoroutine != null)
             {
                 StopCoroutine(m_WaitToEndSessionCoroutine);
             }
-            networkCharSelection.IsSessionClosed.Value = false;
+            networkCharSelection.IsSessionClosed = false;
         }
 
         void SaveSessionResults()
         {
             foreach (NetworkCharSelection.SessionPlayerState playerInfo in networkCharSelection.sessionPlayers)
             {
-                var playerNetworkObject = NetworkManager.Singleton.SpawnManager.GetPlayerNetworkObject(playerInfo.ClientId);
-
-                if (playerNetworkObject && playerNetworkObject.TryGetComponent(out PersistentPlayer persistentPlayer))
+                if (NetworkServer.connections.TryGetValue((int)playerInfo.ClientId, out var conn) && conn.identity != null)
                 {
-                    // pass avatar GUID to PersistentPlayer
-                    // it'd be great to simplify this with something like a NetworkScriptableObjects :(
-                    persistentPlayer.NetworkAvatarGuidState.AvatarGuid.Value =
-                        networkCharSelection.AvatarConfiguration[playerInfo.SeatIdx].Guid.ToNetworkGuid();
+                    if (conn.identity.TryGetComponent(out PersistentPlayer persistentPlayer))
+                    {
+                        persistentPlayer.NetworkAvatarGuidState.AvatarGuid =
+                            networkCharSelection.AvatarConfiguration[playerInfo.SeatIdx].Guid.ToNetworkGuid();
+                    }
                 }
             }
         }
@@ -186,38 +216,80 @@ namespace Unity.BossRoom.Gameplay.GameState
 
         void OnNetworkDespawn()
         {
-            if (NetworkManager.Singleton)
+            if (BossRoomNetworkManager.singleton)
             {
-                NetworkManager.Singleton.OnConnectionEvent -= OnConnectionEvent;
-                NetworkManager.Singleton.SceneManager.OnSceneEvent -= OnSceneEvent;
+                BossRoomNetworkManager.singleton.OnServerClientDisconnected -= OnServerClientDisconnected;
+                BossRoomNetworkManager.singleton.OnServerClientConnected -= OnServerClientConnected;
             }
             if (networkCharSelection)
             {
                 networkCharSelection.OnClientChangedSeat -= OnClientChangedSeat;
+                networkCharSelection.OnClientChangedName -= OnClientChangedName;
             }
         }
 
         void OnNetworkSpawn()
         {
-            if (!NetworkManager.Singleton.IsServer)
+            if (!NetworkServer.active)
             {
                 enabled = false;
             }
             else
             {
-                NetworkManager.Singleton.OnConnectionEvent += OnConnectionEvent;
+                BossRoomNetworkManager.singleton.OnServerClientDisconnected += OnServerClientDisconnected;
+                BossRoomNetworkManager.singleton.OnServerClientConnected += OnServerClientConnected;
                 networkCharSelection.OnClientChangedSeat += OnClientChangedSeat;
+                networkCharSelection.OnClientChangedName += OnClientChangedName;
 
-                NetworkManager.Singleton.SceneManager.OnSceneEvent += OnSceneEvent;
+                // Push previous match result to clients if returning from a PvP match
+                if (m_PersistentGameState != null && m_PersistentGameState.HasMatchResult)
+                {
+                    var result = new MatchResult
+                    {
+                        winnerName = m_PersistentGameState.WinnerName,
+                        winnerClientId = (long)m_PersistentGameState.WinnerClientId
+                    };
+                    networkCharSelection.MatchResultJson = JsonUtility.ToJson(result);
+                    m_PersistentGameState.ClearMatchResult();
+                }
+
+                // Seat any connections that are already present (e.g. the host's local connection,
+                // which became ready before this state object was spawned).
+                foreach (var kvp in NetworkServer.connections)
+                {
+                    if (kvp.Value != null && kvp.Value.isReady)
+                    {
+                        SeatNewPlayer((ulong)kvp.Key);
+                    }
+                }
             }
         }
 
-        void OnSceneEvent(SceneEvent sceneEvent)
+        /// <summary>
+        /// Called when a client finishes loading the scene and is ready — seat them in the session.
+        /// </summary>
+        void OnServerClientConnected(NetworkConnectionToClient conn)
         {
-            // We need to filter out the event that are not a client has finished loading the scene
-            if (sceneEvent.SceneEventType != SceneEventType.LoadComplete) return;
-            // When the client finishes loading the Session Map, we will need to Seat it
-            SeatNewPlayer(sceneEvent.ClientId);
+            if (this == null) return; // guard against callbacks on destroyed object
+            SeatNewPlayer((ulong)conn.connectionId);
+        }
+
+        void OnServerClientDisconnected(NetworkConnectionToClient conn)
+        {
+            ulong clientId = (ulong)conn.connectionId;
+            for (int i = 0; i < networkCharSelection.sessionPlayers.Count; ++i)
+            {
+                if (networkCharSelection.sessionPlayers[i].ClientId == clientId)
+                {
+                    networkCharSelection.sessionPlayers.RemoveAt(i);
+                    break;
+                }
+            }
+
+            if (!networkCharSelection.IsSessionClosed)
+            {
+                CloseSessionIfReady();
+            }
         }
 
         int GetAvailablePlayerNumber()
@@ -229,7 +301,6 @@ namespace Unity.BossRoom.Gameplay.GameState
                     return possiblePlayerNumber;
                 }
             }
-            // we couldn't get a Player# for this person... which means the Session is full!
             return -1;
         }
 
@@ -250,8 +321,17 @@ namespace Unity.BossRoom.Gameplay.GameState
 
         void SeatNewPlayer(ulong clientId)
         {
-            // If Session is closing and waiting to start the game, cancel to allow that new player to select a character
-            if (networkCharSelection.IsSessionClosed.Value)
+            // Prevent double-seating the same client (can happen when OnServerReady fires
+            // after a scene change for an already-seated connection).
+            foreach (var existing in networkCharSelection.sessionPlayers)
+            {
+                if (existing.ClientId == clientId)
+                {
+                    return;
+                }
+            }
+
+            if (networkCharSelection.IsSessionClosed)
             {
                 CancelCloseSession();
             }
@@ -262,39 +342,15 @@ namespace Unity.BossRoom.Gameplay.GameState
                 var playerData = sessionPlayerData.Value;
                 if (playerData.PlayerNumber == -1 || !IsPlayerNumberAvailable(playerData.PlayerNumber))
                 {
-                    // If no player num already assigned or if player num is no longer available, get an available one.
                     playerData.PlayerNumber = GetAvailablePlayerNumber();
                 }
                 if (playerData.PlayerNumber == -1)
                 {
-                    // Sanity check. We ran out of seats... there was no room!
                     throw new Exception($"we shouldn't be here, connection approval should have refused this connection already for client ID {clientId} and player num {playerData.PlayerNumber}");
                 }
 
                 networkCharSelection.sessionPlayers.Add(new NetworkCharSelection.SessionPlayerState(clientId, playerData.PlayerName, playerData.PlayerNumber, NetworkCharSelection.SeatState.Inactive));
                 SessionManager<SessionPlayerData>.Instance.SetPlayerData(clientId, playerData);
-            }
-        }
-
-        void OnConnectionEvent(NetworkManager networkManager, ConnectionEventData connectionEventData)
-        {
-            if (connectionEventData.EventType == ConnectionEvent.ClientDisconnected)
-            {
-                // clear this client's PlayerNumber and any associated visuals (so other players know they're gone).
-                for (int i = 0; i < networkCharSelection.sessionPlayers.Count; ++i)
-                {
-                    if (networkCharSelection.sessionPlayers[i].ClientId == connectionEventData.ClientId)
-                    {
-                        networkCharSelection.sessionPlayers.RemoveAt(i);
-                        break;
-                    }
-                }
-
-                if (!networkCharSelection.IsSessionClosed.Value)
-                {
-                    // If the Session is not already closing, close if the remaining players are all ready
-                    CloseSessionIfReady();
-                }
             }
         }
     }

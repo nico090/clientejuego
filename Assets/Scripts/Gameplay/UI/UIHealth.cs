@@ -1,29 +1,29 @@
-using System;
-using Unity.Netcode;
+using Unity.BossRoom.Gameplay.GameplayObjects;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Unity.BossRoom.Gameplay.UI
 {
     /// <summary>
-    /// UI object that visually represents an object's health. Visuals are updated when NetworkVariable is modified.
+    /// UI object that visually represents an object's health. Visuals are updated via
+    /// NetworkHealthState events (Mirror SyncVar hooks).
     /// </summary>
     public class UIHealth : MonoBehaviour
     {
         [SerializeField]
         Slider m_HitPointsSlider;
 
-        NetworkVariable<int> m_NetworkedHealth;
+        NetworkHealthState m_NetworkHealthState;
 
-        public void Initialize(NetworkVariable<int> networkedHealth, int maxValue)
+        public void Initialize(NetworkHealthState networkHealthState, int maxValue)
         {
-            m_NetworkedHealth = networkedHealth;
+            m_NetworkHealthState = networkHealthState;
 
             m_HitPointsSlider.minValue = 0;
             m_HitPointsSlider.maxValue = maxValue;
             HealthChanged(maxValue, maxValue);
 
-            m_NetworkedHealth.OnValueChanged += HealthChanged;
+            m_NetworkHealthState.HitPointsChanged += HealthChanged;
         }
 
         void HealthChanged(int previousValue, int newValue)
@@ -35,7 +35,10 @@ namespace Unity.BossRoom.Gameplay.UI
 
         void OnDestroy()
         {
-            m_NetworkedHealth.OnValueChanged -= HealthChanged;
+            if (m_NetworkHealthState != null)
+            {
+                m_NetworkHealthState.HitPointsChanged -= HealthChanged;
+            }
         }
     }
 }

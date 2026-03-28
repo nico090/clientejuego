@@ -1,36 +1,73 @@
 using System;
-using Unity.Collections;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Utils
 {
     /// <summary>
-    /// NetworkBehaviour containing only one NetworkVariableString which represents this object's name.
+    /// NetworkBehaviour containing only one SyncVar which represents this object's name.
     /// </summary>
     public class NetworkNameState : NetworkBehaviour
     {
+        [SyncVar(hook = nameof(OnNameChanged))]
         [HideInInspector]
-        public NetworkVariable<FixedPlayerName> Name = new NetworkVariable<FixedPlayerName>();
+        public FixedPlayerName Name;
+
+        /// <summary>Fired on both server and clients whenever Name changes.</summary>
+        public event Action<FixedPlayerName, FixedPlayerName> NameChanged;
+
+        public void SetName(FixedPlayerName value) { Name = value; }
+
+        void OnNameChanged(FixedPlayerName oldValue, FixedPlayerName newValue)
+        {
+            NameChanged?.Invoke(oldValue, newValue);
+        }
     }
 
     /// <summary>
-    /// Wrapping FixedString so that if we want to change player name max size in the future, we only do it once here
+    /// Fixed-length (max 32 chars) player name wrapper with Mirror serialization support.
     /// </summary>
-    public struct FixedPlayerName : INetworkSerializable
+    [Serializable]
+    public struct FixedPlayerName : IEquatable<FixedPlayerName>
     {
-        FixedString32Bytes m_Name;
-        public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-        {
-            serializer.SerializeValue(ref m_Name);
-        }
+        const int k_MaxLength = 32;
 
-        public override string ToString()
-        {
-            return m_Name.Value.ToString();
-        }
+        [SerializeField]
+        string m_Name;
+
+        public override string ToString() => m_Name ?? string.Empty;
 
         public static implicit operator string(FixedPlayerName s) => s.ToString();
-        public static implicit operator FixedPlayerName(string s) => new FixedPlayerName() { m_Name = new FixedString32Bytes(s) };
+
+        public static implicit operator FixedPlayerName(string s)
+        {
+            var name = s ?? string.Empty;
+            if (name.Length > k_MaxLength)
+                name = name.Substring(0, k_MaxLength);
+            return new FixedPlayerName { m_Name = name };
+        }
+
+        public bool Equals(FixedPlayerName other) => string.Equals(m_Name, other.m_Name, StringComparison.Ordinal);
+
+        public override bool Equals(object obj) => obj is FixedPlayerName other && Equals(other);
+
+        public override int GetHashCode() => m_Name != null ? m_Name.GetHashCode() : 0;
+    }
+
+    /// <summary>
+    /// Mirror NetworkReader / NetworkWriter extensions so FixedPlayerName can be used in
+    /// SyncVars, Commands, ClientRpcs, and NetworkMessages.
+    /// </summary>
+    public static class FixedPlayerNameReaderWriterExtensions
+    {
+        public static void WriteFixedPlayerName(this NetworkWriter writer, FixedPlayerName value)
+        {
+            writer.WriteString(value.ToString());
+        }
+
+        public static FixedPlayerName ReadFixedPlayerName(this NetworkReader reader)
+        {
+            return (FixedPlayerName)reader.ReadString();
+        }
     }
 }

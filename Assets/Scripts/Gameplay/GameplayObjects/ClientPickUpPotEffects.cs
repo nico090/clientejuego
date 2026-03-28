@@ -1,11 +1,12 @@
-using System;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.Multiplayer.Samples.BossRoom.Client
 {
     /// <summary>
-    /// Component to play VFX and SFX when this NetworkObject's parent NetworkObject changes to make the action look more polished.
+    /// Component to play VFX and SFX when this NetworkObject's parent changes, making the action look more polished.
+    /// Mirror replicates NetworkIdentity parenting to clients, which triggers Unity's built-in
+    /// OnTransformParentChanged callback — used here in place of NGO's OnNetworkObjectParentChanged.
     /// </summary>
     public class ClientPickUpPotEffects : NetworkBehaviour
     {
@@ -23,19 +24,26 @@ namespace Unity.Multiplayer.Samples.BossRoom.Client
             enabled = false;
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartClient()
         {
-            enabled = IsClient;
+            base.OnStartClient();
+            enabled = true;
         }
 
-        public override void OnNetworkObjectParentChanged(NetworkObject parentNetworkObject)
+        /// <summary>
+        /// Called by Unity whenever this object's Transform parent changes.
+        /// Because Mirror replicates NetworkIdentity parenting, this fires on clients
+        /// when the server reparents the pot (pick up / put down).
+        /// </summary>
+        void OnTransformParentChanged()
         {
-            if (!IsClient)
+            if (!isClient)
             {
                 return;
             }
 
-            if (parentNetworkObject == null)
+            var parentNetworkIdentity = transform.parent?.GetComponentInParent<NetworkIdentity>();
+            if (parentNetworkIdentity == null)
             {
                 m_PutDownParticleSystem.Play();
                 m_PutDownSound.Play();

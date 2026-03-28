@@ -1,6 +1,6 @@
 using System;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.Actions
@@ -42,7 +42,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             // (But if the player just clicked on an attack button, there won't be an explicit target, so we should stay facing however we're facing.)
             if (m_Data.TargetIds != null && m_Data.TargetIds.Length > 0)
             {
-                NetworkObject initialTarget = NetworkManager.Singleton.SpawnManager.SpawnedObjects[m_Data.TargetIds[0]];
+                NetworkServer.spawned.TryGetValue(m_Data.TargetIds[0], out var initialTarget);
                 if (initialTarget)
                 {
                     // face our target
@@ -53,7 +53,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);
 
             // start the "charging up" ActionFX
-            serverCharacter.clientCharacter.ClientPlayActionRpc(Data);
+            serverCharacter.ClientPlayActionRpc(Data);
 
             // sanity-check our data a bit
             Debug.Assert(Config.Projectiles.Length > 1, $"Action {name} has {Config.Projectiles.Length} Projectiles. Expected at least 2!");
@@ -122,7 +122,7 @@ namespace Unity.BossRoom.Gameplay.Actions
                     parent.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim2);
                 }
 
-                parent.clientCharacter.ClientStopChargingUpRpc(GetPercentChargedUp());
+                parent.ClientStopChargingUpRpc(GetPercentChargedUp());
                 if (!m_HitByAttack)
                 {
                     LaunchProjectile(parent);

@@ -1,7 +1,6 @@
 using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.Configuration;
-using Unity.Netcode;
-using Unity.Netcode.Components;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
@@ -19,12 +18,10 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
         public NetworkAnimator NetworkAnimator => m_NetworkAnimator;
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            if (IsServer)
-            {
-                m_NetworkLifeState.LifeState.OnValueChanged += OnLifeStateChanged;
-            }
+            base.OnStartServer();
+            m_NetworkLifeState.LifeStateChanged += OnLifeStateChanged;
         }
 
         void OnLifeStateChanged(LifeState previousValue, LifeState newValue)
@@ -45,11 +42,12 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
             }
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopServer()
         {
-            if (IsServer && m_NetworkLifeState != null)
+            base.OnStopServer();
+            if (m_NetworkLifeState != null)
             {
-                m_NetworkLifeState.LifeState.OnValueChanged -= OnLifeStateChanged;
+                m_NetworkLifeState.LifeStateChanged -= OnLifeStateChanged;
             }
         }
     }

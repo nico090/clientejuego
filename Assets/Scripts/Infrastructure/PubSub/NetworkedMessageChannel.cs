@@ -1,73 +1,49 @@
-using System;
-using Unity.Collections;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
-using VContainer;
 
 namespace Unity.BossRoom.Infrastructure
 {
     /// <summary>
-    /// This type of message channel allows the server to publish a message that will be sent to clients as well as
-    /// being published locally. Clients and the server both can subscribe to it.
+    /// Mirror-based networked message channel. The server publishes a message that is sent to all clients
+    /// and also published locally. Clients subscribe to receive messages from the server.
+    ///
+    /// Uses JsonUtility for serialization so T can be any serializable struct (not limited to unmanaged).
     /// </summary>
-    /// <typeparam name="T"></typeparam>
-    public class NetworkedMessageChannel<T> : MessageChannel<T> where T : unmanaged, INetworkSerializeByMemcpy
+    public class NetworkedMessageChannel<T> : MessageChannel<T> where T : struct
     {
-        NetworkManager m_NetworkManager;
-
-        string m_Name;
+        readonly string m_ChannelName;
 
         public NetworkedMessageChannel()
         {
-            m_Name = $"{typeof(T).FullName}NetworkMessageChannel";
-        }
+            m_ChannelName = typeof(T).FullName;
 
-        [Inject]
-        void InjectDependencies(NetworkManager networkManager)
-        {
-            m_NetworkManager = networkManager;
-            m_NetworkManager.OnConnectionEvent += OnConnectionEvent;
-            if (m_NetworkManager.IsListening)
-            {
-                RegisterHandler();
-            }
+            // Always register immediately. Mirror's RegisterMessageHandlers does not
+            // clear custom handlers, so this survives ConnectHost/scene changes.
+            // NOTE: We cannot use NetworkClient.OnConnectedEvent because Mirror's
+            // NetworkManager overwrites it with `= OnClientConnectInternal` (not +=).
+            RegisterHandler();
         }
 
         public override void Dispose()
         {
             if (!IsDisposed)
             {
-                if (m_NetworkManager != null && m_NetworkManager.CustomMessagingManager != null)
-                {
-                    m_NetworkManager.CustomMessagingManager.UnregisterNamedMessageHandler(m_Name);
-                    m_NetworkManager.OnConnectionEvent -= OnConnectionEvent;
-                }
+                NetworkClient.UnregisterHandler<BossRoomChannelMessage>();
             }
             base.Dispose();
         }
 
-        void OnConnectionEvent(NetworkManager networkManager, ConnectionEventData connectionEventData)
-        {
-            if (connectionEventData.EventType == ConnectionEvent.ClientConnected)
-            {
-                RegisterHandler();
-            }
-        }
-
         void RegisterHandler()
         {
-            // Only register message handler on clients
-            if (!m_NetworkManager.IsServer)
-            {
-                m_NetworkManager.CustomMessagingManager.RegisterNamedMessageHandler(m_Name, ReceiveMessageThroughNetwork);
-            }
+            // Always register so the local host client can handle the message too.
+            // ReplaceHandler avoids "replacing handler" warnings when multiple channels exist.
+            NetworkClient.ReplaceHandler<BossRoomChannelMessage>(ReceiveMessageThroughNetwork, requireAuthentication: false);
         }
 
         public override void Publish(T message)
         {
-            if (m_NetworkManager.IsServer)
+            if (NetworkServer.active)
             {
-                // send message to clients, then publish locally
                 SendMessageThroughNetwork(message);
                 base.Publish(message);
             }
@@ -79,21 +55,32 @@ namespace Unity.BossRoom.Infrastructure
 
         void SendMessageThroughNetwork(T message)
         {
-            // Avoid throwing an exception if you are in the middle of shutting down and either
-            // NetworkManager no longer exists or the CustomMessagingManager no longer exists.
-            if (m_NetworkManager == null || m_NetworkManager.CustomMessagingManager == null)
+            NetworkServer.SendToAll(new BossRoomChannelMessage
             {
-                return;
-            }
-            var writer = new FastBufferWriter(FastBufferWriter.GetWriteSize<T>(), Allocator.Temp);
-            writer.WriteValueSafe(message);
-            m_NetworkManager.CustomMessagingManager.SendNamedMessageToAll(m_Name, writer);
+                ChannelName = m_ChannelName,
+                Data = JsonUtility.ToJson(message)
+            });
         }
 
-        void ReceiveMessageThroughNetwork(ulong clientID, FastBufferReader reader)
+        void ReceiveMessageThroughNetwork(BossRoomChannelMessage msg)
         {
-            reader.ReadValueSafe(out T message);
+            // In host mode, Publish() already called base.Publish locally — skip to avoid duplicates.
+            if (NetworkServer.active) return;
+
+            if (msg.ChannelName != m_ChannelName)
+                return;
+
+            var message = JsonUtility.FromJson<T>(msg.Data);
             base.Publish(message);
         }
+    }
+
+    /// <summary>
+    /// Generic network message wrapper used by NetworkedMessageChannel.
+    /// </summary>
+    public struct BossRoomChannelMessage : NetworkMessage
+    {
+        public string ChannelName;
+        public string Data;
     }
 }

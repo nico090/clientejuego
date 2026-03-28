@@ -1,16 +1,17 @@
 using System;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects
 {
     /// <summary>
-    /// MonoBehaviour containing only one NetworkVariableInt which represents this object's health.
+    /// MonoBehaviour containing only one SyncVar int which represents this object's health.
     /// </summary>
     public class NetworkHealthState : NetworkBehaviour
     {
         [HideInInspector]
-        public NetworkVariable<int> HitPoints = new NetworkVariable<int>();
+        [SyncVar(hook = nameof(OnHitPointsChanged))]
+        public int HitPoints;
 
         // public subscribable event to be invoked when HP has been fully depleted
         public event Action HitPointsDepleted;
@@ -18,18 +19,14 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         // public subscribable event to be invoked when HP has been replenished
         public event Action HitPointsReplenished;
 
-        void OnEnable()
-        {
-            HitPoints.OnValueChanged += HitPointsChanged;
-        }
+        // public subscribable event to be invoked on every HP change (old, new)
+        public event Action<int, int> HitPointsChanged;
 
-        void OnDisable()
+        // SyncVar hook — called on clients when value is updated from server
+        void OnHitPointsChanged(int previousValue, int newValue)
         {
-            HitPoints.OnValueChanged -= HitPointsChanged;
-        }
+            HitPointsChanged?.Invoke(previousValue, newValue);
 
-        void HitPointsChanged(int previousValue, int newValue)
-        {
             if (previousValue > 0 && newValue <= 0)
             {
                 // newly reached 0 HP

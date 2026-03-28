@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
+using Mirror;
 using Unity.BossRoom.Utils;
-using Unity.Netcode;
 using UnityEngine;
-using UUnity.BossRoom.ConnectionManagement;
 using VContainer;
 
 namespace Unity.BossRoom.ConnectionManagement
@@ -11,16 +10,16 @@ namespace Unity.BossRoom.ConnectionManagement
     public enum ConnectStatus
     {
         Undefined,
-        Success,                  //client successfully connected. This may also be a successful reconnect.
-        ServerFull,               //can't join, server is already at capacity.
-        LoggedInAgain,            //logged in on a separate client, causing this one to be kicked out.
-        UserRequestedDisconnect,  //Intentional Disconnect triggered by the user.
-        GenericDisconnect,        //server disconnected, but no specific reason given.
-        Reconnecting,             //client lost connection and is attempting to reconnect.
-        IncompatibleBuildType,    //client build type is incompatible with server.
-        HostEndedSession,         //host intentionally ended the session.
-        StartHostFailed,          // server failed to bind
-        StartClientFailed         // failed to connect to server and/or invalid network endpoint
+        Success,
+        ServerFull,
+        LoggedInAgain,
+        UserRequestedDisconnect,
+        GenericDisconnect,
+        Reconnecting,
+        IncompatibleBuildType,
+        HostEndedSession,
+        StartHostFailed,
+        StartClientFailed
     }
 
     public struct ReconnectMessage
@@ -35,7 +34,7 @@ namespace Unity.BossRoom.ConnectionManagement
         }
     }
 
-    public struct ConnectionEventMessage : INetworkSerializeByMemcpy
+    public struct ConnectionEventMessage
     {
         public ConnectStatus ConnectStatus;
         public FixedPlayerName PlayerName;
@@ -47,29 +46,25 @@ namespace Unity.BossRoom.ConnectionManagement
         public string playerId;
         public string playerName;
         public bool isDebug;
+        public string roomKey;
     }
 
     /// <summary>
-    /// This state machine handles connection through the NetworkManager. It is responsible for listening to
-    /// NetworkManger callbacks and other outside calls and redirecting them to the current ConnectionState object.
+    /// State machine that handles connection flow using Mirror Networking.
+    /// Subscribes to BossRoomNetworkManager events instead of NGO callbacks.
     /// </summary>
     public class ConnectionManager : MonoBehaviour
     {
         ConnectionState m_CurrentState;
 
         [Inject]
-        NetworkManager m_NetworkManager;
-        public NetworkManager NetworkManager => m_NetworkManager;
-
-        [SerializeField]
-        int m_NbReconnectAttempts = 2;
-
-        public int NbReconnectAttempts => m_NbReconnectAttempts;
-
-        [Inject]
         IObjectResolver m_Resolver;
 
+        public int NbReconnectAttempts = 2;
         public int MaxConnectedPlayers = 8;
+
+        /// <summary>Access to Mirror NetworkManager via our custom subclass.</summary>
+        public BossRoomNetworkManager NetworkManager => BossRoomNetworkManager.singleton;
 
         internal readonly OfflineState m_Offline = new OfflineState();
         internal readonly ClientConnectingState m_ClientConnecting = new ClientConnectingState();
@@ -93,20 +88,33 @@ namespace Unity.BossRoom.ConnectionManagement
 
             m_CurrentState = m_Offline;
 
-            NetworkManager.OnConnectionEvent += OnConnectionEvent;
-            NetworkManager.OnServerStarted += OnServerStarted;
-            NetworkManager.ConnectionApprovalCallback += ApprovalCheck;
-            NetworkManager.OnTransportFailure += OnTransportFailure;
-            NetworkManager.OnServerStopped += OnServerStopped;
+            // Subscribe to BossRoomNetworkManager events
+            var nm = BossRoomNetworkManager.singleton;
+            if (nm != null)
+            {
+                nm.OnServerClientConnected += OnServerClientConnected;
+                nm.OnServerClientDisconnected += OnServerClientDisconnected;
+                nm.OnLocalClientConnected += OnLocalClientConnected;
+                nm.OnLocalClientDisconnected += OnLocalClientDisconnected;
+                nm.OnServerStartedEvent += OnServerStarted;
+                nm.OnServerStoppedEvent += OnServerStopped;
+                nm.OnTransportFailureEvent += OnTransportFailure;
+            }
         }
 
         void OnDestroy()
         {
-            NetworkManager.OnConnectionEvent -= OnConnectionEvent;
-            NetworkManager.OnServerStarted -= OnServerStarted;
-            NetworkManager.ConnectionApprovalCallback -= ApprovalCheck;
-            NetworkManager.OnTransportFailure -= OnTransportFailure;
-            NetworkManager.OnServerStopped -= OnServerStopped;
+            var nm = BossRoomNetworkManager.singleton;
+            if (nm != null)
+            {
+                nm.OnServerClientConnected -= OnServerClientConnected;
+                nm.OnServerClientDisconnected -= OnServerClientDisconnected;
+                nm.OnLocalClientConnected -= OnLocalClientConnected;
+                nm.OnLocalClientDisconnected -= OnLocalClientDisconnected;
+                nm.OnServerStartedEvent -= OnServerStarted;
+                nm.OnServerStoppedEvent -= OnServerStopped;
+                nm.OnTransportFailureEvent -= OnTransportFailure;
+            }
         }
 
         internal void ChangeState(ConnectionState nextState)
@@ -114,24 +122,34 @@ namespace Unity.BossRoom.ConnectionManagement
             Debug.Log($"{name}: Changed connection state from {m_CurrentState.GetType().Name} to {nextState.GetType().Name}.");
 
             if (m_CurrentState != null)
-            {
                 m_CurrentState.Exit();
-            }
+
             m_CurrentState = nextState;
             m_CurrentState.Enter();
         }
 
-        void OnConnectionEvent(NetworkManager networkManager, ConnectionEventData connectionEventData)
+        // Server-side: a remote client became ready
+        void OnServerClientConnected(NetworkConnectionToClient conn)
         {
-            switch (connectionEventData.EventType)
-            {
-                case ConnectionEvent.ClientConnected:
-                    m_CurrentState.OnClientConnected(connectionEventData.ClientId);
-                    break;
-                case ConnectionEvent.ClientDisconnected:
-                    m_CurrentState.OnClientDisconnect(connectionEventData.ClientId);
-                    break;
-            }
+            m_CurrentState.OnClientConnected((ulong)conn.connectionId);
+        }
+
+        // Server-side: a remote client disconnected
+        void OnServerClientDisconnected(NetworkConnectionToClient conn)
+        {
+            m_CurrentState.OnClientDisconnect((ulong)conn.connectionId);
+        }
+
+        // Local client successfully connected to a server
+        void OnLocalClientConnected()
+        {
+            m_CurrentState.OnClientConnected(0);
+        }
+
+        // Local client disconnected from a server
+        void OnLocalClientDisconnected()
+        {
+            m_CurrentState.OnClientDisconnect(0);
         }
 
         void OnServerStarted()
@@ -139,9 +157,9 @@ namespace Unity.BossRoom.ConnectionManagement
             m_CurrentState.OnServerStarted();
         }
 
-        void ApprovalCheck(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
+        void OnServerStopped(bool _)
         {
-            m_CurrentState.ApprovalCheck(request, response);
+            m_CurrentState.OnServerStopped();
         }
 
         void OnTransportFailure()
@@ -149,24 +167,9 @@ namespace Unity.BossRoom.ConnectionManagement
             m_CurrentState.OnTransportFailure();
         }
 
-        void OnServerStopped(bool _) // we don't need this parameter as the ConnectionState already carries the relevant information
-        {
-            m_CurrentState.OnServerStopped();
-        }
-
-        public void StartClientSession(string playerName)
-        {
-            m_CurrentState.StartClientSession(playerName);
-        }
-
         public void StartClientIp(string playerName, string ipaddress, int port)
         {
             m_CurrentState.StartClientIP(playerName, ipaddress, port);
-        }
-
-        public void StartHostSession(string playerName)
-        {
-            m_CurrentState.StartHostSession(playerName);
         }
 
         public void StartHostIp(string playerName, string ipaddress, int port)

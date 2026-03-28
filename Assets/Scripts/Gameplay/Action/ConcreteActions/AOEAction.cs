@@ -33,9 +33,9 @@ namespace Unity.BossRoom.Gameplay.Actions
             // broadcasting to all players including myself.
             // We don't know our actual targets for this attack until it triggers, so the client can't use the TargetIds list (and we clear it out for clarity).
             // This means we are responsible for triggering reaction-anims ourselves, which we do in PerformAoe()
-            Data.TargetIds = new ulong[0];
+            Data.TargetIds = new uint[0];
             serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);
-            serverCharacter.clientCharacter.ClientPlayActionRpc(Data);
+            serverCharacter.ClientPlayActionRpc(Data);
             return ActionConclusion.Continue;
         }
 
@@ -59,16 +59,13 @@ namespace Unity.BossRoom.Gameplay.Actions
 
         private void PerformAoE(ServerCharacter parent)
         {
-            // Note: could have a non alloc version of this overlap sphere where we statically store our collider array, but since this is a self
-            // destroyed object, the complexity added to have a static pool of colliders that could be called by multiplayer players at the same time
-            // doesn't seem worth it for now.
-            var colliders = Physics.OverlapSphere(m_Data.Position, Config.Radius, LayerMask.GetMask("NPCs"));
+            // PvP: AOE hits both NPCs and other players
+            var colliders = Physics.OverlapSphere(m_Data.Position, Config.Radius, LayerMask.GetMask("NPCs", "PCs"));
             for (var i = 0; i < colliders.Length; i++)
             {
                 var enemy = colliders[i].GetComponent<IDamageable>();
-                if (enemy != null)
+                if (enemy != null && enemy.netId != parent.netId)
                 {
-                    // actually deal the damage
                     enemy.ReceiveHitPoints(parent, -Config.Amount);
                 }
             }

@@ -1,5 +1,4 @@
 using Unity.BossRoom.Infrastructure;
-using Unity.Multiplayer.Samples.BossRoom;
 using UnityEngine;
 
 namespace Unity.BossRoom.ConnectionManagement

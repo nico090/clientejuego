@@ -1,7 +1,7 @@
 using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.Configuration;
 using Unity.BossRoom.Navigation;
-using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Assertions;
@@ -19,7 +19,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
     /// <summary>
     /// Component responsible for moving a character on the server side based on inputs.
     /// </summary>
-    /*[RequireComponent(typeof(NetworkCharacterState), typeof(NavMeshAgent), typeof(ServerCharacter)), RequireComponent(typeof(Rigidbody))]*/
     public class ServerCharacterMovement : NetworkBehaviour
     {
         [SerializeField]
@@ -56,28 +55,25 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
         void Awake()
         {
-            // disable this NetworkBehavior until it is spawned
+            // disable this NetworkBehaviour until the server starts
             enabled = false;
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            if (IsServer)
-            {
-                // Only enable server component on servers
-                enabled = true;
+            base.OnStartServer();
 
-                // On the server enable navMeshAgent and initialize
-                m_NavMeshAgent.enabled = true;
-                m_NavigationSystem = GameObject.FindGameObjectWithTag(NavigationSystem.NavigationSystemTag).GetComponent<NavigationSystem>();
-                m_NavPath = new DynamicNavPath(m_NavMeshAgent, m_NavigationSystem);
-            }
+            // Only enable server component on servers
+            enabled = true;
+
+            m_NavMeshAgent.enabled = true;
+            m_NavigationSystem = GameObject.FindGameObjectWithTag(NavigationSystem.NavigationSystemTag).GetComponent<NavigationSystem>();
+            m_NavPath = new DynamicNavPath(m_NavMeshAgent, m_NavigationSystem);
         }
 
         /// <summary>
         /// Sets a movement target. We will path to this position, avoiding static obstacles.
         /// </summary>
-        /// <param name="position">Position in world space to path to. </param>
         public void SetMovementTarget(Vector3 position)
         {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -111,7 +107,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         /// <summary>
         /// Follow the given transform until it is reached.
         /// </summary>
-        /// <param name="followTransform">The transform to follow</param>
         public void FollowTransform(Transform followTransform)
         {
             m_MovementState = MovementState.PathFollowing;
@@ -119,9 +114,8 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         }
 
         /// <summary>
-        /// Returns true if the current movement-mode is unabortable (e.g. a knockback effect)
+        /// Returns true if the current movement-mode is unabortable (e.g. a knockback effect).
         /// </summary>
-        /// <returns></returns>
         public bool IsPerformingForcedMovement()
         {
             return m_MovementState == MovementState.Knockback || m_MovementState == MovementState.Charging;
@@ -130,7 +124,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         /// <summary>
         /// Returns true if the character is actively moving, false otherwise.
         /// </summary>
-        /// <returns></returns>
         public bool IsMoving()
         {
             return m_MovementState != MovementState.Idle;
@@ -150,18 +143,12 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
         /// <summary>
         /// Instantly moves the character to a new position. NOTE: this cancels any active movement operation!
-        /// This does not notify the client that the movement occurred due to teleportation, so that needs to
-        /// happen in some other way, such as with the custom action visualization in DashAttackActionFX. (Without
-        /// this, the clients will animate the character moving to the new destination spot, rather than instantly
-        /// appearing in the new spot.)
         /// </summary>
-        /// <param name="newPosition">new coordinates the character should be at</param>
         public void Teleport(Vector3 newPosition)
         {
             CancelMove();
             if (!m_NavMeshAgent.Warp(newPosition))
             {
-                // warping failed! We're off the navmesh somehow. Weird... but we can still teleport
                 Debug.LogWarning($"NavMeshAgent.Warp({newPosition}) failed!", gameObject);
                 transform.position = newPosition;
             }
@@ -177,23 +164,22 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
             var currentState = GetMovementStatus(m_MovementState);
             if (m_PreviousState != currentState)
             {
-                m_CharLogic.MovementStatus.Value = currentState;
+                m_CharLogic.MovementStatus = currentState;
                 m_PreviousState = currentState;
             }
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopServer()
         {
+            base.OnStopServer();
+
             if (m_NavPath != null)
             {
                 m_NavPath.Dispose();
             }
-            if (IsServer)
-            {
-                // Disable server components when despawning
-                enabled = false;
-                m_NavMeshAgent.enabled = false;
-            }
+
+            enabled = false;
+            m_NavMeshAgent.enabled = false;
         }
 
         private void PerformMovement()
@@ -205,7 +191,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
             if (m_MovementState == MovementState.Charging)
             {
-                // if we're done charging, stop moving
                 m_SpecialModeDurationRemaining -= Time.fixedDeltaTime;
                 if (m_SpecialModeDurationRemaining <= 0)
                 {
@@ -233,7 +218,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
                 var desiredMovementAmount = GetBaseMovementSpeed() * Time.fixedDeltaTime;
                 movementVector = m_NavPath.MoveAlongPath(desiredMovementAmount);
 
-                // If we didn't move stop moving.
                 if (movementVector == Vector3.zero)
                 {
                     m_MovementState = MovementState.Idle;
@@ -244,14 +228,10 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
             m_NavMeshAgent.Move(movementVector);
             transform.rotation = Quaternion.LookRotation(movementVector);
 
-            // After moving adjust the position of the dynamic rigidbody.
             m_Rigidbody.position = transform.position;
             m_Rigidbody.rotation = transform.rotation;
         }
 
-        /// <summary>
-        /// Retrieves the speed for this character's class.
-        /// </summary>
         private float GetBaseMovementSpeed()
         {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -265,10 +245,6 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
             return characterClass.Speed;
         }
 
-        /// <summary>
-        /// Determines the appropriate MovementStatus for the character. The
-        /// MovementStatus is used by the client code when animating the character.
-        /// </summary>
         private MovementStatus GetMovementStatus(MovementState movementState)
         {
             switch (movementState)

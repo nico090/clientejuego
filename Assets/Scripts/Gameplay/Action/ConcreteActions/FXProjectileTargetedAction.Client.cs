@@ -1,7 +1,7 @@
 using System;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -16,7 +16,7 @@ namespace Unity.BossRoom.Gameplay.Actions
         // the currently-live projectile. (Note that the projectile will normally destroy itself! We only care in case someone calls Cancel() on us)
         private FXProjectile m_Projectile;
         // the enemy we're aiming at
-        private NetworkObject m_Target;
+        private NetworkIdentity m_Target;
         Transform m_TargetTransform;
 
         public override bool OnStartClient(ClientCharacter clientCharacter)
@@ -24,7 +24,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             base.OnStartClient(clientCharacter);
             m_Target = GetTarget(clientCharacter);
 
-            if (m_Target && PhysicsWrapper.TryGetPhysicsWrapper(m_Target.NetworkObjectId, out var physicsWrapper))
+            if (m_Target && PhysicsWrapper.TryGetPhysicsWrapper(m_Target.netId, out var physicsWrapper))
             {
                 m_TargetTransform = physicsWrapper.Transform;
             }
@@ -72,7 +72,7 @@ namespace Unity.BossRoom.Gameplay.Actions
                 return;
             m_ImpactPlayed = true;
 
-            if (NetworkManager.Singleton.IsServer)
+            if (NetworkServer.active)
             {
                 return;
             }
@@ -84,14 +84,14 @@ namespace Unity.BossRoom.Gameplay.Actions
             }
         }
 
-        NetworkObject GetTarget(ClientCharacter parent)
+        NetworkIdentity GetTarget(ClientCharacter parent)
         {
             if (Data.TargetIds == null || Data.TargetIds.Length == 0)
             {
                 return null;
             }
 
-            if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(Data.TargetIds[0], out NetworkObject targetObject) && targetObject != null)
+            if (NetworkClient.spawned.TryGetValue(Data.TargetIds[0], out var targetObject) && targetObject != null)
             {
                 // make sure this isn't a friend (or if it is, make sure this is a friendly-fire action)
                 var targetable = targetObject.GetComponent<ITargetable>();
@@ -135,7 +135,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             Vector3 targetSpot = Data.Position;
             if (Data.TargetIds != null && Data.TargetIds.Length > 0)
             {
-                var targetObj = NetworkManager.Singleton.SpawnManager.SpawnedObjects[Data.TargetIds[0]];
+                NetworkClient.spawned.TryGetValue(Data.TargetIds[0], out var targetObj);
                 if (targetObj)
                 {
                     targetSpot = targetObj.transform.position;

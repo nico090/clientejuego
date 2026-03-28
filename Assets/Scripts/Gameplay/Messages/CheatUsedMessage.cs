@@ -1,18 +1,15 @@
-using System;
 using Unity.BossRoom.Utils;
-using Unity.Collections;
-using Unity.Netcode;
 
 namespace Unity.BossRoom.Gameplay.Messages
 {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 
-    public struct CheatUsedMessage : INetworkSerializeByMemcpy
+    public struct CheatUsedMessage
     {
-        FixedString32Bytes m_CheatUsed;
+        string m_CheatUsed;
         FixedPlayerName m_CheaterName;
 
-        public string CheatUsed => m_CheatUsed.ToString();
+        public string CheatUsed => m_CheatUsed;
         public string CheaterName => m_CheaterName.ToString();
 
         public CheatUsedMessage(string cheatUsed, string cheaterName)

@@ -1,7 +1,8 @@
 using System;
+using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
 using Unity.BossRoom.Infrastructure;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -21,11 +22,11 @@ namespace Unity.BossRoom.Gameplay.Actions
 
             if (m_Data.TargetIds != null && m_Data.TargetIds.Length > 0)
             {
-                var initialTarget = NetworkManager.Singleton.SpawnManager.SpawnedObjects[m_Data.TargetIds[0]];
+                NetworkServer.spawned.TryGetValue(m_Data.TargetIds[0], out var initialTarget);
                 if (initialTarget)
                 {
                     Vector3 lookAtPosition;
-                    if (PhysicsWrapper.TryGetPhysicsWrapper(initialTarget.NetworkObjectId, out var physicsWrapper))
+                    if (PhysicsWrapper.TryGetPhysicsWrapper(initialTarget.netId, out var physicsWrapper))
                     {
                         lookAtPosition = physicsWrapper.Transform.position;
                     }
@@ -40,7 +41,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             }
 
             serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);
-            serverCharacter.clientCharacter.ClientPlayActionRpc(Data);
+            serverCharacter.ClientPlayActionRpc(Data);
             return true;
         }
 
@@ -101,7 +102,14 @@ namespace Unity.BossRoom.Gameplay.Actions
                 networkObjectTransform.position = parent.physicsWrapper.Transform.localToWorldMatrix.MultiplyPoint(networkObjectTransform.position) +
                     networkObjectTransform.forward + (Vector3.up * 2f);
 
-                no.Spawn(true);
+                // Set thrower for PvP kill attribution
+                var tossedItem = no.GetComponent<TossedItem>();
+                if (tossedItem != null)
+                {
+                    tossedItem.SetThrower(parent.netId);
+                }
+
+                NetworkServer.Spawn(no.gameObject);
 
                 // important to add a force AFTER a NetworkObject is spawned, since IsKinematic is enabled on the
                 // Rigidbody component after it is spawned

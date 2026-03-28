@@ -1,9 +1,9 @@
 using System.Collections;
+using Mirror;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
 using Unity.BossRoom.Infrastructure;
 using Unity.BossRoom.Utils;
-using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Assertions;
 
@@ -13,7 +13,7 @@ namespace Unity.BossRoom.Gameplay.UI
     /// Class designed to only run on a client. Add this to a world-space prefab to display health or name on UI.
     /// </summary>
     /// <remarks>
-    /// Execution order is explicitly set such that it this class executes its LateUpdate after any Cinemachine
+    /// Execution order is explicitly set such that this class executes its LateUpdate after any Cinemachine
     /// LateUpdate calls, which may alter the final position of the game camera.
     /// </remarks>
     [DefaultExecutionOrder(300)]
@@ -79,13 +79,9 @@ namespace Unity.BossRoom.Gameplay.UI
             m_ServerCharacter = GetComponent<ServerCharacter>();
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartClient()
         {
-            if (!NetworkManager.Singleton.IsClient)
-            {
-                enabled = false;
-                return;
-            }
+            base.OnStartClient();
 
             var cameraGameObject = GameObject.FindWithTag("MainCamera");
             if (cameraGameObject)
@@ -160,7 +156,7 @@ namespace Unity.BossRoom.Gameplay.UI
                 SpawnUIState();
             }
 
-            m_UIState.DisplayName(m_NetworkNameState.Name);
+            m_UIState.DisplayName(m_NetworkNameState);
             m_UIStateActive = true;
         }
 
@@ -176,7 +172,7 @@ namespace Unity.BossRoom.Gameplay.UI
                 SpawnUIState();
             }
 
-            m_UIState.DisplayHealth(m_NetworkHealthState.HitPoints, m_BaseHP.Value);
+            m_UIState.DisplayHealth(m_NetworkHealthState, m_BaseHP.Value);
             m_UIStateActive = true;
         }
 
@@ -216,9 +212,9 @@ namespace Unity.BossRoom.Gameplay.UI
             }
         }
 
-        public override void OnDestroy()
+        public override void OnStopClient()
         {
-            base.OnDestroy();
+            base.OnStopClient();
             if (m_UIState != null)
             {
                 Destroy(m_UIState.gameObject);

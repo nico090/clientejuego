@@ -1,7 +1,6 @@
-using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.Messages;
 using Unity.BossRoom.Infrastructure;
-using Unity.Netcode;
 using UnityEngine;
 using VContainer;
 
@@ -23,7 +22,10 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         [SerializeField]
         Animator m_Animator;
 
-        public NetworkVariable<bool> IsOpen { get; } = new NetworkVariable<bool>();
+        [SyncVar(hook = nameof(OnIsOpenChanged))]
+        bool m_IsOpen;
+
+        public bool IsOpen => m_IsOpen;
 
         const string k_AnimatorDoorOpenBoolVarName = "IsOpen";
 
@@ -47,35 +49,27 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
                 Debug.LogError("Door has no switches and can never be opened!", gameObject);
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            IsOpen.OnValueChanged += OnDoorStateChanged;
-
-            if (IsClient)
-            {
-                // initialize visuals based on current server state (or else we default to "closed")
-                m_PhysicsObject.SetActive(!IsOpen.Value);
-            }
-
-            if (IsServer)
-            {
-                OnDoorStateChanged(false, IsOpen.Value);
-            }
+            base.OnStartServer();
+            OnIsOpenChanged(false, m_IsOpen);
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStartClient()
         {
-            IsOpen.OnValueChanged -= OnDoorStateChanged;
+            base.OnStartClient();
+            // initialize visuals based on current server state (or else we default to "closed")
+            m_PhysicsObject.SetActive(!m_IsOpen);
         }
 
         void Update()
         {
-            if (IsServer && IsSpawned)
+            if (isServer)
             {
                 var isAnySwitchOn = false;
                 foreach (var floorSwitch in m_SwitchesThatOpenThisDoor)
                 {
-                    if (floorSwitch && floorSwitch.IsSwitchedOn.Value)
+                    if (floorSwitch && floorSwitch.IsSwitchedOn)
                     {
                         isAnySwitchOn = true;
                         break;
@@ -86,18 +80,18 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
                 isAnySwitchOn |= ForceOpen;
 #endif
 
-                IsOpen.Value = isAnySwitchOn;
+                m_IsOpen = isAnySwitchOn;
             }
         }
 
-        void OnDoorStateChanged(bool wasDoorOpen, bool isDoorOpen)
+        void OnIsOpenChanged(bool wasDoorOpen, bool isDoorOpen)
         {
-            if (IsServer)
+            if (isServer)
             {
                 m_Animator.SetBool(m_AnimatorDoorOpenBoolID, isDoorOpen);
             }
 
-            if (IsClient)
+            if (isClient)
             {
                 m_PhysicsObject.SetActive(!isDoorOpen);
                 if (m_Publisher != null)

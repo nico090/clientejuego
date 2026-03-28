@@ -1,6 +1,5 @@
-using System;
 using System.Collections.Generic;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects
@@ -18,7 +17,8 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         [SerializeField]
         Collider m_Collider;
 
-        public NetworkVariable<bool> IsSwitchedOn { get; } = new NetworkVariable<bool>();
+        [SyncVar(hook = nameof(FloorSwitchStateChanged))]
+        public bool IsSwitchedOn;
 
         List<Collider> m_RelevantCollidersInTrigger = new List<Collider>();
 
@@ -32,16 +32,17 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
             m_Collider.isTrigger = true;
         }
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            if (!IsServer)
-            {
+            base.OnStartServer();
+            FloorSwitchStateChanged(false, IsSwitchedOn);
+        }
+
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+            if (!isServer)
                 enabled = false;
-            }
-
-            FloorSwitchStateChanged(false, IsSwitchedOn.Value);
-
-            IsSwitchedOn.OnValueChanged += FloorSwitchStateChanged;
         }
 
         void OnTriggerEnter(Collider other)
@@ -61,7 +62,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
             // In this case, OnTriggerExit() won't get called for them! We can tell if a Collider was destroyed
             // because its reference will become null. So here we remove any nulls and see if we're still active.
             m_RelevantCollidersInTrigger.RemoveAll(col => col == null);
-            IsSwitchedOn.Value = m_RelevantCollidersInTrigger.Count > 0;
+            IsSwitchedOn = m_RelevantCollidersInTrigger.Count > 0;
         }
 
         void FloorSwitchStateChanged(bool previousValue, bool newValue)

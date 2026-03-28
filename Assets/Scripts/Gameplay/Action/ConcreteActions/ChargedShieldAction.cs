@@ -1,6 +1,6 @@
 using System;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 using UnityEngine.Assertions;
 
@@ -35,7 +35,7 @@ namespace Unity.BossRoom.Gameplay.Actions
         {
             if (m_Data.TargetIds != null && m_Data.TargetIds.Length > 0)
             {
-                NetworkObject initialTarget = NetworkManager.Singleton.SpawnManager.SpawnedObjects[m_Data.TargetIds[0]];
+                NetworkServer.spawned.TryGetValue(m_Data.TargetIds[0], out var initialTarget);
                 if (initialTarget)
                 {
                     // face our target, if we had one
@@ -52,7 +52,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             // raise the start trigger to start the animation loop!
             serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);
 
-            serverCharacter.clientCharacter.ClientPlayActionRpc(Data);
+            serverCharacter.ClientPlayActionRpc(Data);
             return true;
         }
 
@@ -135,8 +135,8 @@ namespace Unity.BossRoom.Gameplay.Actions
             // if stepped into invincibility, decrement invincibility counter
             if (Mathf.Approximately(GetPercentChargedUp(), 1f))
             {
-                serverCharacter.serverAnimationHandler.NetworkAnimator.Animator.SetInteger(Config.OtherAnimatorVariable,
-                    serverCharacter.serverAnimationHandler.NetworkAnimator.Animator.GetInteger(Config.OtherAnimatorVariable) - 1);
+                serverCharacter.serverAnimationHandler.NetworkAnimator.animator.SetInteger(Config.OtherAnimatorVariable,
+                    serverCharacter.serverAnimationHandler.NetworkAnimator.animator.GetInteger(Config.OtherAnimatorVariable) - 1);
             }
         }
 
@@ -145,7 +145,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             if (IsChargingUp())
             {
                 m_StoppedChargingUpTime = Time.time;
-                parent.clientCharacter.ClientStopChargingUpRpc(GetPercentChargedUp());
+                parent.ClientStopChargingUpRpc(GetPercentChargedUp());
 
                 parent.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim2);
 
@@ -158,8 +158,8 @@ namespace Unity.BossRoom.Gameplay.Actions
                     // can restart their shield before the first one has ended, thereby getting two stacks of invincibility.
                     // So each active copy of the charge-up increments the invincibility counter, and the animator controller
                     // knows anything greater than zero means we shouldn't show hit-reacts.
-                    parent.serverAnimationHandler.NetworkAnimator.Animator.SetInteger(Config.OtherAnimatorVariable,
-                        parent.serverAnimationHandler.NetworkAnimator.Animator.GetInteger(Config.OtherAnimatorVariable) + 1);
+                    parent.serverAnimationHandler.NetworkAnimator.animator.SetInteger(Config.OtherAnimatorVariable,
+                        parent.serverAnimationHandler.NetworkAnimator.animator.GetInteger(Config.OtherAnimatorVariable) + 1);
                 }
             }
         }

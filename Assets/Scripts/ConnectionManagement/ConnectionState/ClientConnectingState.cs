@@ -1,12 +1,11 @@
 using System;
-using System.Threading.Tasks;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.ConnectionManagement
 {
     /// <summary>
-    /// Connection state corresponding to when a client is attempting to connect to a server. Starts the client when
-    /// entering. If successful, transitions to the ClientConnected state. If not, transitions to the Offline state.
+    /// Connection state corresponding to when a client is attempting to connect to a server.
     /// </summary>
     class ClientConnectingState : OnlineState
     {
@@ -35,13 +34,15 @@ namespace Unity.BossRoom.ConnectionManagement
 
         public override void OnClientDisconnect(ulong _)
         {
-            // client ID is for sure ours here
             StartingClientFailed();
         }
 
         void StartingClientFailed()
         {
-            var disconnectReason = m_ConnectionManager.NetworkManager.DisconnectReason;
+            // Mirror stores disconnect reason via BossRoomNetworkManager
+            var disconnectReason = m_ConnectionManager.NetworkManager?.DisconnectReason ?? string.Empty;
+            m_ConnectionManager.NetworkManager?.ClearDisconnectReason();
+
             if (string.IsNullOrEmpty(disconnectReason))
             {
                 m_ConnectStatusPublisher.Publish(ConnectStatus.StartClientFailed);
@@ -61,13 +62,7 @@ namespace Unity.BossRoom.ConnectionManagement
             {
                 m_ConnectionMethod.SetupClientConnection();
 
-                if (m_ConnectionMethod is ConnectionMethodIP)
-                {
-                    if (!m_ConnectionManager.NetworkManager.StartClient())
-                    {
-                        throw new Exception("NetworkManager StartClient failed");
-                    }
-                }
+                m_ConnectionManager.NetworkManager.StartClient();
             }
             catch (Exception e)
             {

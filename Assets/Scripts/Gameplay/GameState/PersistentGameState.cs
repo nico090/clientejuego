@@ -3,6 +3,13 @@ using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameState
 {
+    [Serializable]
+    public class MatchResult
+    {
+        public string winnerName;
+        public long winnerClientId; // long instead of ulong for JsonUtility compatibility
+    }
+
     public enum WinState
     {
         Invalid,
@@ -17,14 +24,34 @@ namespace Unity.BossRoom.Gameplay.GameState
     {
         public WinState WinState { get; private set; }
 
+        // PvP match result data (persists across scene loads)
+        public string WinnerName { get; private set; }
+        public ulong WinnerClientId { get; private set; }
+        public bool HasMatchResult { get; private set; }
+
         public void SetWinState(WinState winState)
         {
             WinState = winState;
         }
 
+        public void SetMatchResult(string winnerName, ulong winnerClientId)
+        {
+            WinnerName = winnerName;
+            WinnerClientId = winnerClientId;
+            HasMatchResult = true;
+        }
+
+        public void ClearMatchResult()
+        {
+            WinnerName = null;
+            WinnerClientId = 0;
+            HasMatchResult = false;
+        }
+
         public void Reset()
         {
             WinState = WinState.Invalid;
+            ClearMatchResult();
         }
     }
 }

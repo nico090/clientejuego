@@ -1,15 +1,12 @@
-using Unity.Netcode;
-using Unity.Netcode.Components;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 {
     /// <summary>
-    /// Component that spawns a PlayerAvatar's Avatar. It does this in two places:
-    /// 1) either inside OnNetworkSpawn() or
-    /// 2) inside NetworkAnimator's OnSynchronize method.
-    /// The latter is necessary for clients receiving initial synchronizing data, where the Animator needs to be present
-    /// and bound (Animator.Bind()) *before* the incoming animation data is applied.
+    /// Subclass of Mirror's NetworkAnimator that instantiates the player avatar's Graphics GameObject
+    /// on clients when the object is spawned, then binds the Animator before Mirror applies
+    /// the initial animation state.
     /// </summary>
     public class ClientPlayerAvatarNetworkAnimator : NetworkAnimator
     {
@@ -18,51 +15,44 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
         bool m_AvatarInstantiated;
 
-        public override void OnNetworkSpawn()
-        {
-            base.OnNetworkSpawn();
-            if (!IsClient || m_AvatarInstantiated)
-            {
-                return;
-            }
+        /// <summary>Exposes the underlying Animator for other components (e.g. ClientCharacter).</summary>
+        public Animator Animator => animator;
 
-            InstantiateAvatar();
-        }
-
-        public override void OnNetworkDespawn()
+        public override void OnStartClient()
         {
-            base.OnNetworkDespawn();
-            m_AvatarInstantiated = false;
-            var avatarGraphics = Animator.transform.GetChild(0);
-            if (avatarGraphics != null)
-            {
-                Destroy(avatarGraphics.gameObject);
-            }
-        }
-
-        protected override void OnSynchronize<T>(ref BufferSerializer<T> serializer)
-        {
-            if (NetworkManager.Singleton.IsClient && !m_AvatarInstantiated)
+            base.OnStartClient();
+            if (!m_AvatarInstantiated)
             {
                 InstantiateAvatar();
             }
+        }
 
-            base.OnSynchronize(ref serializer);
+        public override void OnStopClient()
+        {
+            base.OnStopClient();
+            m_AvatarInstantiated = false;
+            if (animator != null && animator.transform.childCount > 0)
+            {
+                var avatarGraphics = animator.transform.GetChild(0);
+                if (avatarGraphics != null)
+                {
+                    Destroy(avatarGraphics.gameObject);
+                }
+            }
         }
 
         void InstantiateAvatar()
         {
-            if (Animator.transform.childCount > 0)
+            if (animator == null || animator.transform.childCount > 0)
             {
-                // we may receive a NetworkVariable's OnValueChanged callback more than once as a client
-                // this makes sure we don't spawn a duplicate graphics GameObject
+                // Animator not ready, or avatar already instantiated — skip.
                 return;
             }
 
-            // spawn avatar graphics GameObject
-            Instantiate(m_NetworkAvatarGuidState.RegisteredAvatar.Graphics, Animator.transform);
+            // Spawn avatar graphics GameObject
+            Instantiate(m_NetworkAvatarGuidState.RegisteredAvatar.Graphics, animator.transform);
 
-            Animator.Rebind();
+            animator.Rebind();
 
             m_AvatarInstantiated = true;
         }

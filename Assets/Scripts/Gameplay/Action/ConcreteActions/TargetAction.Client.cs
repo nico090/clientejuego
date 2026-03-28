@@ -1,8 +1,8 @@
 using System;
+using Mirror;
 using Unity.BossRoom.Gameplay.UserInput;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -11,21 +11,21 @@ namespace Unity.BossRoom.Gameplay.Actions
     public partial class TargetAction
     {
         private GameObject m_TargetReticule;
-        private ulong m_CurrentTarget;
-        private ulong m_NewTarget;
+        private uint m_CurrentTarget;
+        private uint m_NewTarget;
 
         private const float k_ReticuleGroundHeight = 0.2f;
 
         public override bool OnStartClient(ClientCharacter clientCharacter)
         {
             base.OnStartClient(clientCharacter);
-            clientCharacter.serverCharacter.TargetId.OnValueChanged += OnTargetChanged;
+            clientCharacter.serverCharacter.TargetIdChanged += OnTargetChanged;
             clientCharacter.serverCharacter.GetComponent<ClientInputSender>().ActionInputEvent += OnActionInput;
 
             return true;
         }
 
-        private void OnTargetChanged(ulong oldTarget, ulong newTarget)
+        private void OnTargetChanged(uint oldTarget, uint newTarget)
         {
             m_NewTarget = newTarget;
         }
@@ -36,7 +36,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             {
                 m_CurrentTarget = m_NewTarget;
 
-                if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(m_CurrentTarget, out NetworkObject targetObject))
+                if (NetworkClient.spawned.TryGetValue(m_CurrentTarget, out var targetObject))
                 {
                     var targetEntity = targetObject != null ? targetObject.GetComponent<ITargetable>() : null;
                     if (targetEntity != null)
@@ -73,7 +73,7 @@ namespace Unity.BossRoom.Gameplay.Actions
         /// Ensures that the TargetReticule GameObject exists. This must be done prior to enabling it because it can be destroyed
         /// "accidentally" if its parent is destroyed while it is detached.
         /// </summary>
-        void ValidateReticule(ClientCharacter parent, NetworkObject targetObject)
+        void ValidateReticule(ClientCharacter parent, NetworkIdentity targetObject)
         {
             if (m_TargetReticule == null)
             {
@@ -91,7 +91,7 @@ namespace Unity.BossRoom.Gameplay.Actions
         {
             GameObject.Destroy(m_TargetReticule);
 
-            clientCharacter.serverCharacter.TargetId.OnValueChanged -= OnTargetChanged;
+            clientCharacter.serverCharacter.TargetIdChanged -= OnTargetChanged;
             if (clientCharacter.TryGetComponent(out ClientInputSender inputSender))
             {
                 inputSender.ActionInputEvent -= OnActionInput;

@@ -1,8 +1,7 @@
-using System;
 using System.Collections.Generic;
+using Mirror;
 using Unity.BossRoom.ConnectionManagement;
-using Unity.Multiplayer.Samples.BossRoom;
-using Unity.Netcode;
+using Unity.BossRoom.Infrastructure;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
@@ -13,7 +12,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
     /// <remarks>
     /// This is an optimization. In server code you can already get a list of players' ServerCharacters by
     /// iterating over the active connections and calling GetComponent() on their PlayerObject. But we need
-    /// to iterate over all players quite often -- the monsters' IdleAIState does so in every Update() --
+    /// to iterate over all players quite often — the monsters' IdleAIState does so in every Update() —
     /// and all those GetComponent() calls add up! So this optimization lets us iterate without calling
     /// GetComponent(). This will be refactored with a ScriptableObject-based approach on player collection.
     /// </remarks>
@@ -25,17 +24,10 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         [SerializeField]
         ServerCharacter m_CachedServerCharacter;
 
-        public override void OnNetworkSpawn()
+        public override void OnStartServer()
         {
-            if (IsServer)
-            {
-                s_ActivePlayers.Add(m_CachedServerCharacter);
-            }
-            else
-            {
-                enabled = false;
-            }
-
+            base.OnStartServer();
+            s_ActivePlayers.Add(m_CachedServerCharacter);
         }
 
         void OnDisable()
@@ -43,21 +35,21 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
             s_ActivePlayers.Remove(m_CachedServerCharacter);
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopServer()
         {
-            if (IsServer)
+            base.OnStopServer();
+
+            ulong ownerClientId = connectionToClient != null ? (ulong)connectionToClient.connectionId : 0ul;
+            var movementTransform = m_CachedServerCharacter.Movement.transform;
+            SessionPlayerData? sessionPlayerData = SessionManager<SessionPlayerData>.Instance.GetPlayerData(ownerClientId);
+            if (sessionPlayerData.HasValue)
             {
-                var movementTransform = m_CachedServerCharacter.Movement.transform;
-                SessionPlayerData? sessionPlayerData = SessionManager<SessionPlayerData>.Instance.GetPlayerData(OwnerClientId);
-                if (sessionPlayerData.HasValue)
-                {
-                    var playerData = sessionPlayerData.Value;
-                    playerData.PlayerPosition = movementTransform.position;
-                    playerData.PlayerRotation = movementTransform.rotation;
-                    playerData.CurrentHitPoints = m_CachedServerCharacter.HitPoints;
-                    playerData.HasCharacterSpawned = true;
-                    SessionManager<SessionPlayerData>.Instance.SetPlayerData(OwnerClientId, playerData);
-                }
+                var playerData = sessionPlayerData.Value;
+                playerData.PlayerPosition = movementTransform.position;
+                playerData.PlayerRotation = movementTransform.rotation;
+                playerData.CurrentHitPoints = m_CachedServerCharacter.HitPoints;
+                playerData.HasCharacterSpawned = true;
+                SessionManager<SessionPlayerData>.Instance.SetPlayerData(ownerClientId, playerData);
             }
         }
 
@@ -73,13 +65,12 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         /// <summary>
         /// Returns the ServerCharacter owned by a specific client. Always returns null on the client.
         /// </summary>
-        /// <param name="ownerClientId"></param>
-        /// <returns>The ServerCharacter owned by the client, or null if no ServerCharacter is found</returns>
         public static ServerCharacter GetPlayerServerCharacter(ulong ownerClientId)
         {
             foreach (var playerServerCharacter in s_ActivePlayers)
             {
-                if (playerServerCharacter.OwnerClientId == ownerClientId)
+                if (playerServerCharacter.connectionToClient != null &&
+                    (ulong)playerServerCharacter.connectionToClient.connectionId == ownerClientId)
                 {
                     return playerServerCharacter;
                 }

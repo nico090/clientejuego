@@ -1,6 +1,6 @@
 using System;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.Actions
@@ -13,15 +13,15 @@ namespace Unity.BossRoom.Gameplay.Actions
     {
         float m_ActionStartTime;
 
-        NetworkObject m_HeldNetworkObject;
+        NetworkIdentity m_HeldNetworkObject;
 
         public override bool OnStart(ServerCharacter serverCharacter)
         {
             m_ActionStartTime = Time.time;
 
             // play animation of dropping a heavy object, if one is already held
-            if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(
-                    serverCharacter.HeldNetworkObject.Value, out var heldObject))
+            if (NetworkServer.spawned.TryGetValue(
+                    serverCharacter.HeldNetworkObject, out var heldObject))
             {
                 m_HeldNetworkObject = heldObject;
 
@@ -49,7 +49,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             {
                 // drop the pot in space
                 m_HeldNetworkObject.transform.SetParent(null);
-                clientCharacter.HeldNetworkObject.Value = 0;
+                clientCharacter.HeldNetworkObject = 0;
 
                 return ActionConclusion.Stop;
             }

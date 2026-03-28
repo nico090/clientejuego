@@ -1,7 +1,7 @@
 using System;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.Actions
@@ -36,7 +36,7 @@ namespace Unity.BossRoom.Gameplay.Actions
                 targetPos = collidePos;
 
                 // and update our action data so that when we send it to the clients, it will be up-to-date
-                Data.TargetIds = new ulong[0];
+                Data.TargetIds = new uint[0];
                 Data.Position = targetPos;
             }
 
@@ -49,7 +49,7 @@ namespace Unity.BossRoom.Gameplay.Actions
 
             serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);
             // tell clients to visualize this action
-            serverCharacter.clientCharacter.ClientPlayActionRpc(Data);
+            serverCharacter.ClientPlayActionRpc(Data);
             return true;
         }
 
@@ -84,7 +84,7 @@ namespace Unity.BossRoom.Gameplay.Actions
         {
             if (!m_ImpactedTarget)
             {
-                serverCharacter.clientCharacter.ClientCancelActionsByPrototypeIDRpc(ActionID);
+                serverCharacter.ClientCancelActionsByPrototypeIDRpc(ActionID);
             }
         }
 
@@ -98,14 +98,12 @@ namespace Unity.BossRoom.Gameplay.Actions
                 return null;
             }
 
-            NetworkObject obj;
-            if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(Data.TargetIds[0], out obj) && obj != null)
+            if (NetworkServer.spawned.TryGetValue(Data.TargetIds[0], out var obj) && obj != null)
             {
-                // make sure this isn't a friend (or if it is, make sure this is a friendly-fire action)
+                // PvP: allow targeting other players. Only reject if targeting self.
                 var serverChar = obj.GetComponent<ServerCharacter>();
-                if (serverChar && serverChar.IsNpc == (Config.IsFriendly ^ parent.IsNpc))
+                if (serverChar && serverChar.netId == parent.netId)
                 {
-                    // not a valid target
                     return null;
                 }
 

@@ -1,5 +1,5 @@
 using System;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
@@ -13,42 +13,65 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
 
         public static event Action LocalClientDespawned;
 
-        public override void OnNetworkSpawn()
-        {
-            name = "PlayerAvatar" + OwnerClientId;
+        bool m_AddedToCollection;
 
-            if (IsClient && IsOwner)
+        public override void OnStartServer()
+        {
+            base.OnStartServer();
+            name = "PlayerAvatar" + connectionToClient.connectionId;
+            // On a dedicated server (no local client), add to collection here.
+            // On host, defer to OnStartClient so isLocalPlayer is already set.
+            if (!NetworkClient.active && !m_AddedToCollection)
+            {
+                if (m_PlayerAvatars) m_PlayerAvatars.Add(this);
+                m_AddedToCollection = true;
+            }
+        }
+
+        public override void OnStartClient()
+        {
+            base.OnStartClient();
+            if (!m_AddedToCollection)
+            {
+                if (m_PlayerAvatars) m_PlayerAvatars.Add(this);
+                m_AddedToCollection = true;
+            }
+            if (isLocalPlayer)
             {
                 LocalClientSpawned?.Invoke(this);
             }
-
-            if (m_PlayerAvatars)
-            {
-                m_PlayerAvatars.Add(this);
-            }
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopClient()
         {
-            if (IsClient && IsOwner)
+            base.OnStopClient();
+            if (isLocalPlayer)
             {
                 LocalClientDespawned?.Invoke();
             }
+            if (!isServer)
+            {
+                RemoveNetworkCharacter();
+            }
+        }
 
+        public override void OnStopServer()
+        {
+            base.OnStopServer();
             RemoveNetworkCharacter();
         }
 
-        public override void OnDestroy()
+        void OnDestroy()
         {
-            base.OnDestroy();
             RemoveNetworkCharacter();
         }
 
         void RemoveNetworkCharacter()
         {
-            if (m_PlayerAvatars)
+            if (m_AddedToCollection)
             {
-                m_PlayerAvatars.Remove(this);
+                if (m_PlayerAvatars) m_PlayerAvatars.Remove(this);
+                m_AddedToCollection = false;
             }
         }
     }

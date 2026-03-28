@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.BossRoom.Gameplay.GameplayObjects;
 using Unity.BossRoom.Gameplay.GameplayObjects.Character;
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -56,11 +56,11 @@ namespace Unity.BossRoom.Gameplay.Actions
 
             if (m_Data.TargetIds != null && m_Data.TargetIds.Length > 0)
             {
-                NetworkObject initialTarget = NetworkManager.Singleton.SpawnManager.SpawnedObjects[m_Data.TargetIds[0]];
+                NetworkServer.spawned.TryGetValue(m_Data.TargetIds[0], out var initialTarget);
                 if (initialTarget)
                 {
                     Vector3 lookAtPosition;
-                    if (PhysicsWrapper.TryGetPhysicsWrapper(initialTarget.NetworkObjectId, out var physicsWrapper))
+                    if (PhysicsWrapper.TryGetPhysicsWrapper(initialTarget.netId, out var physicsWrapper))
                     {
                         lookAtPosition = physicsWrapper.Transform.position;
                     }
@@ -85,7 +85,7 @@ namespace Unity.BossRoom.Gameplay.Actions
                 serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);
             }
 
-            serverCharacter.clientCharacter.ClientPlayActionRpc(Data);
+            serverCharacter.ClientPlayActionRpc(Data);
             return true;
         }
 
@@ -147,8 +147,8 @@ namespace Unity.BossRoom.Gameplay.Actions
                 return;
             }
 
-            // if we collide with allies, we don't want to hurt them (but we do knock them back, see below)
-            if (parent.IsNpc != victim.IsNpc)
+            // PvP: damage is dealt to any non-self target (NPCs vs players, or player vs player)
+            if (parent.IsNpc != victim.IsNpc || (!parent.IsNpc && !victim.IsNpc))
             {
                 // first see if this victim has the special ability to stun us!
                 float chanceToStun = victim.GetBuffedValue(BuffableValue.ChanceToStunTramplers);
@@ -161,7 +161,7 @@ namespace Unity.BossRoom.Gameplay.Actions
 
                 // We deal a certain amount of damage to our "initial" target and a different amount to all other victims.
                 int damage;
-                if (m_Data.TargetIds != null && m_Data.TargetIds.Length > 0 && m_Data.TargetIds[0] == victim.NetworkObjectId)
+                if (m_Data.TargetIds != null && m_Data.TargetIds.Length > 0 && m_Data.TargetIds[0] == victim.netId)
                 {
                     damage = Config.Amount;
                 }
@@ -238,7 +238,7 @@ namespace Unity.BossRoom.Gameplay.Actions
             if (!m_WasStunned)
             {
                 parent.Movement.CancelMove();
-                parent.clientCharacter.ClientCancelAllActionsRpc();
+                parent.ClientCancelAllActionsRpc();
             }
             m_WasStunned = true;
         }
