@@ -212,20 +212,28 @@ namespace Unity.BossRoom.ConnectionManagement
 
             var type = transport.GetType();
 
-            // Try 'Port' property (e.g. KcpTransport)
-            var portProp = type.GetProperty("Port");
-            if (portProp != null && portProp.PropertyType == typeof(ushort))
+            // Try common property names first
+            foreach (string name in new[] { "Port", "port" })
             {
-                portProp.SetValue(transport, port);
-                return;
+                var prop = type.GetProperty(name);
+                if (prop != null && prop.PropertyType == typeof(ushort) && prop.CanWrite)
+                {
+                    prop.SetValue(transport, port);
+                    Debug.Log($"[BossRoomNetworkManager] Set port {port} via property '{name}' on {type.Name}");
+                    return;
+                }
             }
 
-            // Try 'port' field (e.g. TelepathyTransport)
-            var portField = type.GetField("port");
-            if (portField != null && portField.FieldType == typeof(ushort))
+            // Try common field names (KcpTransport uses a public field 'Port', Telepathy uses 'port')
+            foreach (string name in new[] { "Port", "port" })
             {
-                portField.SetValue(transport, port);
-                return;
+                var field = type.GetField(name);
+                if (field != null && field.FieldType == typeof(ushort))
+                {
+                    field.SetValue(transport, port);
+                    Debug.Log($"[BossRoomNetworkManager] Set port {port} via field '{name}' on {type.Name}");
+                    return;
+                }
             }
 
             Debug.LogWarning($"BossRoomNetworkManager: could not set port {port} — transport type {type.Name} not recognized.");

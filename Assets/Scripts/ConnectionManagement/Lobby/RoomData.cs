@@ -59,4 +59,12 @@ namespace Unity.BossRoom.ConnectionManagement.Lobby
         public string room_key;
         public string error;
     }
+
+    [Serializable]
+    public class RoomStatusResponse
+    {
+        public string room_id;
+        public string status;
+        public int current_players;
+    }
 }

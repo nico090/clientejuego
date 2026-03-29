@@ -54,6 +54,12 @@ namespace Unity.BossRoom.ConnectionManagement.Lobby
             return response;
         }
 
+        public async Task<RoomStatusResponse> GetRoomStatusAsync(string roomId)
+        {
+            string json = await GetAsync($"/api/rooms/{roomId}/status");
+            return JsonUtility.FromJson<RoomStatusResponse>(json);
+        }
+
         public async Task<JoinResponse> JoinRoomAsync(string roomId, string password, string playerName)
         {
             var body = new JoinRoomRequest

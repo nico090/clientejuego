@@ -28,8 +28,27 @@ namespace Unity.BossRoom.Gameplay.UI
 
             m_RoomNameText.text = roomInfo.name;
             m_PlayerCountText.text = $"{roomInfo.current_players}/{roomInfo.max_players}";
-            m_StatusText.text = roomInfo.status;
             m_LockIcon.SetActive(roomInfo.has_password);
+
+            switch (roomInfo.status)
+            {
+                case "starting":
+                    m_StatusText.text = "Starting...";
+                    m_StatusText.color = new Color(1f, 0.8f, 0.2f); // yellow
+                    break;
+                case "ready":
+                    m_StatusText.text = "Ready";
+                    m_StatusText.color = new Color(0.3f, 1f, 0.3f); // green
+                    break;
+                case "in_game":
+                    m_StatusText.text = "In Game";
+                    m_StatusText.color = new Color(0.5f, 0.7f, 1f); // light blue
+                    break;
+                default:
+                    m_StatusText.text = roomInfo.status;
+                    m_StatusText.color = Color.white;
+                    break;
+            }
 
             bool canJoin = roomInfo.status == "ready" && roomInfo.current_players < roomInfo.max_players;
             m_JoinButton.interactable = canJoin;

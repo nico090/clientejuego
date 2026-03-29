@@ -62,7 +62,7 @@ namespace Unity.BossRoom.Gameplay.UI
 
         [Header("Master Server")]
         [SerializeField] string m_MasterServerUrl = "http://127.0.0.1:8000";
-        [SerializeField] float m_AutoRefreshInterval = 10f;
+        [SerializeField] float m_AutoRefreshInterval = 5f;
 
         [Inject] ConnectionManager m_ConnectionManager;
         [Inject] NameGenerationData m_NameGenerationData;
@@ -74,6 +74,7 @@ namespace Unity.BossRoom.Gameplay.UI
         string m_PendingJoinRoomId;
         Coroutine m_AutoRefreshCoroutine;
         Coroutine m_ActiveRefreshCoroutine;
+        Coroutine m_WaitForReadyCoroutine;
 
         [Inject]
         void InjectDependencies(ISubscriber<ConnectStatus> connectStatusSubscriber)
@@ -147,6 +148,7 @@ namespace Unity.BossRoom.Gameplay.UI
             if (status != ConnectStatus.Success)
             {
                 SetStatus($"Connection failed: {status}");
+                StartAutoRefresh();
             }
         }
 
@@ -239,9 +241,15 @@ namespace Unity.BossRoom.Gameplay.UI
 
         public void OnCancelConnecting()
         {
+            if (m_WaitForReadyCoroutine != null)
+            {
+                StopCoroutine(m_WaitForReadyCoroutine);
+                m_WaitForReadyCoroutine = null;
+            }
             if (m_ConnectingPanel != null) m_ConnectingPanel.SetActive(false);
             if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(false);
             if (m_ConnectionManager != null) m_ConnectionManager.RequestShutdown();
+            StartAutoRefresh();
         }
 
         // ===========================================================
@@ -480,58 +488,57 @@ namespace Unity.BossRoom.Gameplay.UI
             }
 
             HideCreatePanel();
-            SetStatus("Room created! Connecting...");
-            Debug.Log($"[Lobby] Room created: {response.room_id}, connecting as {playerName} with key {response.room_key}");
+            Debug.Log($"[Lobby] Room created: {response.room_id}, waiting for server ready...");
 
-            // Connect immediately with the room key provided by the server
-            ConnectToGameServer(response.host_address, response.port, playerName, response.room_key);
+            // Wait for the dedicated server to become ready before connecting
+            m_WaitForReadyCoroutine = StartCoroutine(WaitForServerReadyThenConnect(
+                response.room_id, response.host_address, response.port, playerName, response.room_key));
+            yield return m_WaitForReadyCoroutine;
+            m_WaitForReadyCoroutine = null;
         }
 
-        IEnumerator WaitForServerReady(string roomId, string password)
+        IEnumerator WaitForServerReadyThenConnect(string roomId, string hostAddress, int port, string playerName, string roomKey)
         {
+            if (m_ConnectingPanel != null) m_ConnectingPanel.SetActive(true);
             if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(true);
+
             float waited = 0f;
+            const float pollInterval = 1.5f;
+            const float timeout = 45f;
 
-            while (waited < 60f)
+            while (waited < timeout)
             {
-                yield return new WaitForSeconds(1f);
-                waited += 1f;
+                string msg = $"Waiting for server... ({(int)waited}s)";
+                SetStatus(msg);
+                if (m_ConnectingText != null) m_ConnectingText.text = msg;
 
-                var task = m_Client.GetRoomsAsync();
+                yield return new WaitForSeconds(pollInterval);
+                waited += pollInterval;
+
+                var task = m_Client.GetRoomStatusAsync(roomId);
                 while (!task.IsCompleted)
                     yield return null;
 
                 if (task.IsFaulted)
                 {
-                    Debug.LogWarning($"[Lobby] Error fetching rooms: {task.Exception?.InnerException?.Message}");
+                    Debug.LogWarning($"[Lobby] Error polling room status: {task.Exception?.InnerException?.Message}");
                     continue;
                 }
 
-                if (task.Result != null && task.Result.Length > 0)
+                if (task.Result != null && task.Result.status == "ready")
                 {
-                    foreach (var room in task.Result)
-                    {
-                        if (room.room_id == roomId && room.status == "ready")
-                        {
-                            if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(false);
-                            Debug.Log($"[Lobby] Server ready, auto-joining room {roomId}");
-                            // Auto-join the room we just created
-                            yield return JoinRoomCoroutine(roomId, password);
-                            yield break;
-                        }
-                    }
+                    if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(false);
+                    Debug.Log($"[Lobby] Server ready for room {roomId}, connecting on port {port}...");
+                    ConnectToGameServer(hostAddress, port, playerName, roomKey);
+                    yield break;
                 }
-                else
-                {
-                    Debug.LogWarning("[Lobby] GetRoomsAsync returned empty result");
-                }
-
-                SetStatus($"Waiting for server... ({(int)waited}s)");
             }
 
+            // Timeout — server never became ready
             if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(false);
+            if (m_ConnectingPanel != null) m_ConnectingPanel.SetActive(false);
             SetStatus("Server failed to start (timeout)");
-            Debug.LogError($"[Lobby] Server failed to become ready within 60s for room {roomId}");
+            Debug.LogError($"[Lobby] Server for room {roomId} did not become ready within {timeout}s");
             StartAutoRefresh();
         }
 
