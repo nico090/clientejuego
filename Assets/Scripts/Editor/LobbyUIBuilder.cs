@@ -58,7 +58,6 @@ namespace Unity.BossRoom.Editor
 
             var nameInp = InputField("NameInput", hdr.transform, "Your name...", 160, 34);
             var refreshBtn = Btn("Refresh", hdr.transform, "Refresh", 80, 34, kBlue);
-            var createBtn = Btn("+ Create", hdr.transform, "+ Create", 110, 34, kGreen);
             var ipBtn = Btn("Direct IP", hdr.transform, "Direct IP", 100, 34, kOrange);
 
             // ═══════════ STATUS ROW ═══════════
@@ -108,7 +107,7 @@ namespace Unity.BossRoom.Editor
             content.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             sr.content = crt;
 
-            var noRooms = Txt("NoRooms", vp.transform, "No rooms found. Create one!", 14, FontStyles.Italic, kMuted);
+            var noRooms = Txt("NoRooms", vp.transform, "No rooms available", 14, FontStyles.Italic, kMuted);
             noRooms.alignment = TextAlignmentOptions.Center;
             var nrrt = noRooms.GetComponent<RectTransform>();
             nrrt.anchorMin = new Vector2(0.5f, 0.5f); nrrt.anchorMax = new Vector2(0.5f, 0.5f);
@@ -128,28 +127,6 @@ namespace Unity.BossRoom.Editor
             Spacer(bot.transform);
             var closeBtn = Btn("Close", bot.transform, "Close", 90, 32, kRed);
 
-            // ═══════════ CREATE ROOM MODAL ═══════════
-            var crP = Modal("CreatePanel", root.transform, 380, 330, kGreen);
-            var crVlg = crP.AddComponent<VerticalLayoutGroup>();
-            crVlg.padding = new RectOffset(20, 20, 16, 16); crVlg.spacing = 6;
-            crVlg.childForceExpandWidth = true; crVlg.childForceExpandHeight = false;
-            crVlg.childControlHeight = crVlg.childControlWidth = true;
-
-            Txt("T", crP.transform, "Create New Room", 17, FontStyles.Bold, kWhite);
-            Txt("L", crP.transform, "Room Name", 11, FontStyles.Normal, kMuted);
-            var rnInp = InputField("RoomName", crP.transform, "My Room", 0, 34);
-            Txt("L", crP.transform, "Password (optional)", 11, FontStyles.Normal, kMuted);
-            var rpInp = InputField("RoomPass", crP.transform, "", 0, 34);
-            rpInp.contentType = TMP_InputField.ContentType.Password;
-            Txt("L", crP.transform, "Max Players", 11, FontStyles.Normal, kMuted);
-            var dd = Dropdown("MaxPlayers", crP.transform, 0, 32, new[]{"2","4","8"});
-            dd.value = 2;
-
-            var crRow = BtnRow(crP.transform);
-            var crCancel = Btn("Cancel", crRow.transform, "Cancel", 0, 34, kRed);
-            var crOk = Btn("Create", crRow.transform, "Create", 0, 34, kGreen);
-            crP.SetActive(false);
-
             // ═══════════ PASSWORD MODAL ═══════════
             var pwP = Modal("PassPanel", root.transform, 320, 180, kBlue);
             var pwVlg = pwP.AddComponent<VerticalLayoutGroup>();
@@ -164,6 +141,65 @@ namespace Unity.BossRoom.Editor
             var pwCancel = Btn("Cancel", pwRow.transform, "Cancel", 0, 34, kRed);
             var pwOk = Btn("Join", pwRow.transform, "Join", 0, 34, kBlue);
             pwP.SetActive(false);
+
+            // ═══════════ ADMIN PANEL MODAL ═══════════
+            var adP = Modal("AdminPanel", root.transform, 420, 340, kGreen);
+            var adVlg = adP.AddComponent<VerticalLayoutGroup>();
+            adVlg.padding = new RectOffset(20, 20, 16, 16); adVlg.spacing = 8;
+            adVlg.childForceExpandWidth = true; adVlg.childForceExpandHeight = false;
+            adVlg.childControlHeight = adVlg.childControlWidth = true;
+
+            var adTitle = Txt("AdTitle", adP.transform, "Room Admin", 18, FontStyles.Bold, kWhite);
+            adTitle.alignment = TextAlignmentOptions.Center;
+
+            var adRoomName = Txt("AdRoomName", adP.transform, "Sala 1", 14, FontStyles.Normal, kMuted);
+            adRoomName.alignment = TextAlignmentOptions.Center;
+
+            var adPlayerCount = Txt("AdPlayerCount", adP.transform, "Players: 0", 14, FontStyles.Normal, kWhite);
+            adPlayerCount.alignment = TextAlignmentOptions.Center;
+
+            var adStatus = Txt("AdStatus", adP.transform, "Waiting for players...", 13, FontStyles.Italic, kYellow);
+            adStatus.alignment = TextAlignmentOptions.Center;
+
+            // Separator
+            var sep = Go("Sep", adP.transform);
+            Img(sep, new Color(1, 1, 1, 0.1f));
+            LE(sep, -1, 1);
+
+            // Privacy section
+            Txt("PrivLabel", adP.transform, "Privacy", 12, FontStyles.Bold, kMuted);
+
+            var privRow = Go("PrivRow", adP.transform);
+            LE(privRow, -1, 38);
+            var privHlg = privRow.AddComponent<HorizontalLayoutGroup>();
+            privHlg.spacing = 6;
+            privHlg.childForceExpandWidth = true;
+            privHlg.childForceExpandHeight = true;
+            privHlg.childControlWidth = true;
+
+            var adPassInp = InputField("AdminPass", privRow.transform, "Password...", 0, 34);
+            adPassInp.contentType = TMP_InputField.ContentType.Password;
+
+            var privBtnRow = Go("PrivBtnRow", adP.transform);
+            LE(privBtnRow, -1, 34);
+            var privBtnHlg = privBtnRow.AddComponent<HorizontalLayoutGroup>();
+            privBtnHlg.spacing = 8;
+            privBtnHlg.childForceExpandWidth = true;
+            privBtnHlg.childForceExpandHeight = true;
+            privBtnHlg.childControlWidth = true;
+
+            var setPrivBtn = Btn("SetPrivate", privBtnRow.transform, "Set Private", 0, 34, kOrange);
+            var setPubBtn = Btn("SetPublic", privBtnRow.transform, "Set Public", 0, 34, kBlue);
+
+            // Separator 2
+            var sep2 = Go("Sep2", adP.transform);
+            Img(sep2, new Color(1, 1, 1, 0.1f));
+            LE(sep2, -1, 1);
+
+            // Start Game button
+            var startBtn = Btn("StartGame", adP.transform, "START GAME", 0, 44, kGreen);
+
+            adP.SetActive(false);
 
             // ═══════════ DIRECT IP MODAL ═══════════
             var dipP = Modal("DirectIPPanel", root.transform, 360, 230, kOrange);
@@ -211,17 +247,21 @@ namespace Unity.BossRoom.Editor
             S(so, "m_RoomEntryPrefab", prefab);
             S(so, "m_RefreshButton", refreshBtn.GetComponent<Button>());
             S(so, "m_NoRoomsText", noRooms);
-            S(so, "m_CreateRoomPanel", crP);
-            S(so, "m_RoomNameInput", rnInp);
-            S(so, "m_RoomPasswordInput", rpInp);
-            S(so, "m_MaxPlayersDropdown", dd);
-            S(so, "m_CreateRoomButton", crOk.GetComponent<Button>());
-            S(so, "m_ShowCreatePanelButton", createBtn.GetComponent<Button>());
-            S(so, "m_CancelCreateButton", crCancel.GetComponent<Button>());
+            // Password panel
             S(so, "m_PasswordPanel", pwP);
             S(so, "m_JoinPasswordInput", jpInp);
             S(so, "m_ConfirmJoinButton", pwOk.GetComponent<Button>());
             S(so, "m_CancelPasswordButton", pwCancel.GetComponent<Button>());
+            // Admin panel
+            S(so, "m_AdminPanel", adP);
+            S(so, "m_AdminPasswordInput", adPassInp);
+            S(so, "m_SetPrivateButton", setPrivBtn.GetComponent<Button>());
+            S(so, "m_SetPublicButton", setPubBtn.GetComponent<Button>());
+            S(so, "m_StartGameButton", startBtn.GetComponent<Button>());
+            S(so, "m_AdminStatusText", adStatus);
+            S(so, "m_AdminRoomNameText", adRoomName);
+            S(so, "m_AdminPlayerCountText", adPlayerCount);
+            // Direct IP panel
             S(so, "m_DirectIPPanel", dipP);
             S(so, "m_IPAddressInput", ipAddrInp);
             S(so, "m_IPPortInput", ipPortInp);
@@ -229,6 +269,7 @@ namespace Unity.BossRoom.Editor
             S(so, "m_HostIPButton", dipHost.GetComponent<Button>());
             S(so, "m_ShowDirectIPButton", ipBtn.GetComponent<Button>());
             S(so, "m_CancelDirectIPButton", dipCancel.GetComponent<Button>());
+            // Connecting panel
             S(so, "m_ConnectingPanel", conP);
             S(so, "m_ConnectingText", conTxt);
             S(so, "m_CancelConnectingButton", conCancel.GetComponent<Button>());
@@ -241,17 +282,6 @@ namespace Unity.BossRoom.Editor
             brt.anchorMax = new Vector2(0.5f, 0);
             brt.anchoredPosition = new Vector2(0, 70);
 
-            // ── Host + Play button (outside panel) ──
-            var hostPlay = Btn("HostAndPlay", canvas.transform, "Host + Play", 200, 48, kGreen);
-            var hprt = hostPlay.GetComponent<RectTransform>();
-            hprt.anchorMin = new Vector2(0.5f, 0);
-            hprt.anchorMax = new Vector2(0.5f, 0);
-            hprt.anchoredPosition = new Vector2(0, 130);
-
-            // Wire Host+Play to LobbyUIMediator.HostAndPlay
-            UnityEditor.Events.UnityEventTools.AddPersistentListener(
-                hostPlay.GetComponent<Button>().onClick, new UnityEngine.Events.UnityAction(med.HostAndPlay));
-
             UnityEditor.Events.UnityEventTools.AddPersistentListener(
                 browse.GetComponent<Button>().onClick, new UnityEngine.Events.UnityAction(med.Show));
             UnityEditor.Events.UnityEventTools.AddPersistentListener(
@@ -259,7 +289,6 @@ namespace Unity.BossRoom.Editor
 
             Undo.RegisterCreatedObjectUndo(root, "Build Lobby UI");
             Undo.RegisterCreatedObjectUndo(browse, "Build Browse Btn");
-            Undo.RegisterCreatedObjectUndo(hostPlay, "Build Host+Play Btn");
             Selection.activeGameObject = root;
 
             Debug.Log("[LobbyUIBuilder] Done. Prefab at Assets/Prefabs/UI/LobbyRoomEntry.prefab");
@@ -448,68 +477,6 @@ namespace Unity.BossRoom.Editor
             var le = LE(g, -1, h);
             if (w > 0) le.preferredWidth = w;
             return inp;
-        }
-
-        static TMP_Dropdown Dropdown(string n, Transform p, float w, float h, string[] opts)
-        {
-            var g = Go(n, p);
-            g.GetComponent<RectTransform>().sizeDelta = new Vector2(w, h);
-            var img = Img(g, kInput);
-
-            var cap = Go("Cap", g.transform); Anchor(cap, 0, 0, 1, 1);
-            cap.GetComponent<RectTransform>().offsetMin = new Vector2(8, 0);
-            cap.GetComponent<RectTransform>().offsetMax = new Vector2(-24, 0);
-            var capT = cap.AddComponent<TextMeshProUGUI>();
-            capT.fontSize = 13; capT.color = kWhite;
-
-            var arr = Go("Arr", g.transform);
-            var art = arr.GetComponent<RectTransform>();
-            art.anchorMin = new Vector2(1, 0); art.anchorMax = new Vector2(1, 1);
-            art.sizeDelta = new Vector2(20, 0); art.anchoredPosition = new Vector2(-10, 0);
-            var arT = arr.AddComponent<TextMeshProUGUI>();
-            arT.text = "\u25BC"; arT.fontSize = 10; arT.color = kMuted; arT.alignment = TextAlignmentOptions.Center;
-
-            var tmpl = Go("Tmpl", g.transform);
-            var tr = tmpl.GetComponent<RectTransform>();
-            tr.anchorMin = new Vector2(0, 0); tr.anchorMax = new Vector2(1, 0);
-            tr.pivot = new Vector2(.5f, 1); tr.sizeDelta = new Vector2(0, 100);
-            Img(tmpl, new Color(.12f,.12f,.16f));
-            var tsr = tmpl.AddComponent<ScrollRect>(); tsr.horizontal = false;
-
-            var tvp = Go("VP", tmpl.transform); Anchor(tvp, 0, 0, 1, 1);
-            Img(tvp, Color.clear); tvp.AddComponent<Mask>().showMaskGraphic = false;
-            tsr.viewport = tvp.GetComponent<RectTransform>();
-
-            var tc = Go("C", tvp.transform);
-            var tcr = tc.GetComponent<RectTransform>();
-            tcr.anchorMin = new Vector2(0, 1); tcr.anchorMax = new Vector2(1, 1);
-            tcr.pivot = new Vector2(.5f, 1); tcr.sizeDelta = new Vector2(0, 28);
-            tsr.content = tcr;
-
-            var itm = Go("Item", tc.transform);
-            var ir = itm.GetComponent<RectTransform>();
-            ir.anchorMin = new Vector2(0, .5f); ir.anchorMax = new Vector2(1, .5f);
-            ir.sizeDelta = new Vector2(0, 28);
-            Img(itm, Color.clear); itm.AddComponent<Toggle>();
-
-            var il = Go("IL", itm.transform); Anchor(il, 0, 0, 1, 1);
-            il.GetComponent<RectTransform>().offsetMin = new Vector2(8, 0);
-            il.GetComponent<RectTransform>().offsetMax = new Vector2(-8, 0);
-            var ilt = il.AddComponent<TextMeshProUGUI>();
-            ilt.fontSize = 13; ilt.color = kWhite;
-
-            tmpl.SetActive(false);
-
-            var dd = g.AddComponent<TMP_Dropdown>();
-            dd.template = tr; dd.captionText = capT; dd.itemText = ilt; dd.targetGraphic = img;
-            dd.ClearOptions();
-            var ol = new System.Collections.Generic.List<TMP_Dropdown.OptionData>();
-            foreach (var o in opts) ol.Add(new TMP_Dropdown.OptionData(o));
-            dd.AddOptions(ol);
-
-            var le = LE(g, -1, h);
-            if (w > 0) le.preferredWidth = w;
-            return dd;
         }
 
         static GameObject Modal(string n, Transform p, float w, float h, Color accent)

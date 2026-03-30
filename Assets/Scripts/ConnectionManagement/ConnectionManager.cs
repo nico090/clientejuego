@@ -90,6 +90,8 @@ namespace Unity.BossRoom.ConnectionManagement
 
             // Subscribe to BossRoomNetworkManager events
             var nm = BossRoomNetworkManager.singleton;
+            if (nm == null)
+                nm = FindObjectOfType<BossRoomNetworkManager>();
             if (nm != null)
             {
                 nm.OnServerClientConnected += OnServerClientConnected;
@@ -105,6 +107,8 @@ namespace Unity.BossRoom.ConnectionManagement
         void OnDestroy()
         {
             var nm = BossRoomNetworkManager.singleton;
+            if (nm == null)
+                nm = FindObjectOfType<BossRoomNetworkManager>();
             if (nm != null)
             {
                 nm.OnServerClientConnected -= OnServerClientConnected;

@@ -14,7 +14,8 @@ namespace Unity.BossRoom.Gameplay.UI
 {
     /// <summary>
     /// UI mediator for the lobby browser. Talks to the FastAPI master server
-    /// to list, create, and join rooms, then connects via Mirror.
+    /// to list pre-created rooms and join them. The first player to join
+    /// becomes admin (player 0) and can make the room private or start the game.
     /// </summary>
     public class LobbyUIMediator : MonoBehaviour
     {
@@ -31,20 +32,21 @@ namespace Unity.BossRoom.Gameplay.UI
         [SerializeField] Button m_RefreshButton;
         [SerializeField] TextMeshProUGUI m_NoRoomsText;
 
-        [Header("Create Room")]
-        [SerializeField] GameObject m_CreateRoomPanel;
-        [SerializeField] TMP_InputField m_RoomNameInput;
-        [SerializeField] TMP_InputField m_RoomPasswordInput;
-        [SerializeField] TMP_Dropdown m_MaxPlayersDropdown;
-        [SerializeField] Button m_CreateRoomButton;
-        [SerializeField] Button m_ShowCreatePanelButton;
-        [SerializeField] Button m_CancelCreateButton;
-
         [Header("Join Password")]
         [SerializeField] GameObject m_PasswordPanel;
         [SerializeField] TMP_InputField m_JoinPasswordInput;
         [SerializeField] Button m_ConfirmJoinButton;
         [SerializeField] Button m_CancelPasswordButton;
+
+        [Header("Admin Controls")]
+        [SerializeField] GameObject m_AdminPanel;
+        [SerializeField] TMP_InputField m_AdminPasswordInput;
+        [SerializeField] Button m_SetPrivateButton;
+        [SerializeField] Button m_SetPublicButton;
+        [SerializeField] Button m_StartGameButton;
+        [SerializeField] TextMeshProUGUI m_AdminStatusText;
+        [SerializeField] TextMeshProUGUI m_AdminRoomNameText;
+        [SerializeField] TextMeshProUGUI m_AdminPlayerCountText;
 
         [Header("Direct IP")]
         [SerializeField] GameObject m_DirectIPPanel;
@@ -75,6 +77,11 @@ namespace Unity.BossRoom.Gameplay.UI
         Coroutine m_AutoRefreshCoroutine;
         Coroutine m_ActiveRefreshCoroutine;
         Coroutine m_WaitForReadyCoroutine;
+        Coroutine m_AdminPollCoroutine;
+
+        // Admin state — set when the player joins and is_admin == true
+        bool m_IsAdmin;
+        string m_AdminRoomId;
 
         [Inject]
         void InjectDependencies(ISubscriber<ConnectStatus> connectStatusSubscriber)
@@ -94,15 +101,6 @@ namespace Unity.BossRoom.Gameplay.UI
             // Button listeners
             if (m_RefreshButton != null)
                 m_RefreshButton.onClick.AddListener(StartSingleRefresh);
-
-            if (m_CreateRoomButton != null)
-                m_CreateRoomButton.onClick.AddListener(() => StartCoroutine(CreateRoomCoroutine()));
-
-            if (m_ShowCreatePanelButton != null)
-                m_ShowCreatePanelButton.onClick.AddListener(ShowCreatePanel);
-
-            if (m_CancelCreateButton != null)
-                m_CancelCreateButton.onClick.AddListener(HideCreatePanel);
 
             if (m_ConfirmJoinButton != null)
                 m_ConfirmJoinButton.onClick.AddListener(() => StartCoroutine(ConfirmJoinCoroutine()));
@@ -125,11 +123,21 @@ namespace Unity.BossRoom.Gameplay.UI
             if (m_HostIPButton != null)
                 m_HostIPButton.onClick.AddListener(OnHostIPClicked);
 
+            // Admin panel buttons
+            if (m_SetPrivateButton != null)
+                m_SetPrivateButton.onClick.AddListener(() => StartCoroutine(SetPrivateCoroutine()));
+
+            if (m_SetPublicButton != null)
+                m_SetPublicButton.onClick.AddListener(() => StartCoroutine(SetPublicCoroutine()));
+
+            if (m_StartGameButton != null)
+                m_StartGameButton.onClick.AddListener(() => StartCoroutine(StartGameCoroutine()));
+
             // Initial panel state
-            if (m_CreateRoomPanel != null) m_CreateRoomPanel.SetActive(false);
             if (m_PasswordPanel != null) m_PasswordPanel.SetActive(false);
             if (m_ConnectingPanel != null) m_ConnectingPanel.SetActive(false);
             if (m_DirectIPPanel != null) m_DirectIPPanel.SetActive(false);
+            if (m_AdminPanel != null) m_AdminPanel.SetActive(false);
             if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(false);
 
             RegenerateName();
@@ -148,6 +156,7 @@ namespace Unity.BossRoom.Gameplay.UI
             if (status != ConnectStatus.Success)
             {
                 SetStatus($"Connection failed: {status}");
+                HideAdminPanel();
                 StartAutoRefresh();
             }
         }
@@ -167,7 +176,11 @@ namespace Unity.BossRoom.Gameplay.UI
             if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(false);
             if (m_ConnectingPanel != null) m_ConnectingPanel.SetActive(false);
             if (m_PasswordPanel != null) m_PasswordPanel.SetActive(false);
+            if (m_AdminPanel != null) m_AdminPanel.SetActive(false);
             SetStatus("");
+
+            m_IsAdmin = false;
+            m_AdminRoomId = null;
 
             StartSingleRefresh();
             StartAutoRefresh();
@@ -182,6 +195,7 @@ namespace Unity.BossRoom.Gameplay.UI
             m_CanvasGroup.blocksRaycasts = false;
 
             StopAutoRefresh();
+            StopAdminPoll();
         }
 
         public void RegenerateName()
@@ -195,48 +209,11 @@ namespace Unity.BossRoom.Gameplay.UI
 
         public string GetPlayerName()
         {
-            // Prefer input field if present, fall back to label
             if (m_PlayerNameInput != null && !string.IsNullOrWhiteSpace(m_PlayerNameInput.text))
                 return m_PlayerNameInput.text.Trim();
             if (m_PlayerNameLabel != null && !string.IsNullOrWhiteSpace(m_PlayerNameLabel.text))
                 return m_PlayerNameLabel.text.Trim();
             return "Player";
-        }
-
-        public void HostAndPlay()
-        {
-            Hide();
-            StopAutoRefresh();
-
-            if (m_ConnectingPanel != null) m_ConnectingPanel.SetActive(true);
-            if (m_ConnectingText != null) m_ConnectingText.text = "Starting host...";
-
-            string playerName = GetPlayerName();
-
-            var netManager = BossRoomNetworkManager.singleton;
-            if (netManager != null)
-            {
-                netManager.PendingClientPayload = new ConnectionPayload
-                {
-                    playerId = ClientPrefs.GetGuid(),
-                    playerName = playerName
-                };
-            }
-
-            // m_ConnectionManager may be null if VContainer hasn't injected it yet
-            var connMgr = m_ConnectionManager;
-            if (connMgr == null)
-                connMgr = FindObjectOfType<ConnectionManager>();
-
-            if (connMgr != null)
-            {
-                Debug.Log($"[Lobby] HostAndPlay: starting host as '{playerName}'");
-                connMgr.StartHostIp(playerName, "127.0.0.1", 7777);
-            }
-            else
-            {
-                Debug.LogError("[Lobby] HostAndPlay: ConnectionManager not found!");
-            }
         }
 
         public void OnCancelConnecting()
@@ -249,6 +226,7 @@ namespace Unity.BossRoom.Gameplay.UI
             if (m_ConnectingPanel != null) m_ConnectingPanel.SetActive(false);
             if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(false);
             if (m_ConnectionManager != null) m_ConnectionManager.RequestShutdown();
+            HideAdminPanel();
             StartAutoRefresh();
         }
 
@@ -326,8 +304,6 @@ namespace Unity.BossRoom.Gameplay.UI
         {
             if (m_RoomListContent == null) return;
 
-            // Clear existing entries — detach before Destroy so the LayoutGroup
-            // stops counting them immediately (Destroy itself is deferred).
             for (int i = m_RoomListContent.childCount - 1; i >= 0; i--)
             {
                 var go = m_RoomListContent.GetChild(i).gameObject;
@@ -366,7 +342,7 @@ namespace Unity.BossRoom.Gameplay.UI
 
         void OnJoinRoomClicked(RoomInfo room)
         {
-            if (room.has_password)
+            if (room.has_password || room.is_locked)
             {
                 m_PendingJoinRoomId = room.room_id;
                 if (m_JoinPasswordInput != null) m_JoinPasswordInput.text = "";
@@ -416,130 +392,168 @@ namespace Unity.BossRoom.Gameplay.UI
                 yield break;
             }
 
-            // Connect via Mirror
+            // If this player is admin, show the admin panel instead of connecting immediately
+            if (response.is_admin)
+            {
+                m_IsAdmin = true;
+                m_AdminRoomId = roomId;
+                Debug.Log($"[Lobby] Player '{playerName}' is ADMIN of room {roomId}");
+                ShowAdminPanel(roomId, playerName, response);
+                yield break;
+            }
+
+            // Non-admin: connect to the game server directly
             ConnectToGameServer(response.host_address, response.port, playerName, response.room_key);
         }
 
         // ===========================================================
-        // Create Room
+        // Admin Panel
         // ===========================================================
 
-        void ShowCreatePanel()
+        void ShowAdminPanel(string roomId, string playerName, JoinResponse joinResponse)
         {
-            if (m_CreateRoomPanel != null) m_CreateRoomPanel.SetActive(true);
-        }
+            StopAutoRefresh();
 
-        void HideCreatePanel()
-        {
-            if (m_CreateRoomPanel != null) m_CreateRoomPanel.SetActive(false);
-        }
+            if (m_AdminPanel != null) m_AdminPanel.SetActive(true);
 
-        IEnumerator CreateRoomCoroutine()
-        {
-            string roomName = m_RoomNameInput != null ? m_RoomNameInput.text : "";
-            if (string.IsNullOrWhiteSpace(roomName))
+            // Find the room info for display
+            RoomInfo roomInfo = null;
+            if (m_CachedRooms != null)
             {
-                SetStatus("Room name is required");
-                yield break;
-            }
-
-            string password = m_RoomPasswordInput != null ? m_RoomPasswordInput.text : null;
-            if (string.IsNullOrWhiteSpace(password)) password = null;
-
-            // Dropdown: index 0 = 2 players, 1 = 4, 2 = 8
-            int maxPlayers = 8;
-            if (m_MaxPlayersDropdown != null)
-            {
-                maxPlayers = m_MaxPlayersDropdown.value switch
+                foreach (var r in m_CachedRooms)
                 {
-                    0 => 2,
-                    1 => 4,
-                    2 => 8,
-                    _ => 8
-                };
+                    if (r.room_id == roomId) { roomInfo = r; break; }
+                }
             }
 
-            if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(true);
-            SetStatus("Creating room...");
-            StopAutoRefresh(); // pause auto-refresh while waiting
+            if (m_AdminRoomNameText != null)
+                m_AdminRoomNameText.text = roomInfo != null ? roomInfo.name : roomId;
 
-            string playerName = GetPlayerName();
-            var task = m_Client.CreateRoomAsync(roomName, password, maxPlayers, playerName);
-            while (!task.IsCompleted)
-                yield return null;
+            UpdateAdminStatus("Waiting for players...");
 
-            if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(false);
+            // Store join response so we can connect later when admin starts the game
+            m_PendingAdminJoinResponse = joinResponse;
 
-            if (task.IsFaulted)
-            {
-                SetStatus("Error creating room");
-                Debug.LogError($"[Lobby] Create failed: {task.Exception?.InnerException?.Message}");
-                StartAutoRefresh();
-                yield break;
-            }
-
-            var response = task.Result;
-            if (response == null)
-            {
-                SetStatus("Error parsing room response");
-                Debug.LogError("[Lobby] Create response was null");
-                StartAutoRefresh();
-                yield break;
-            }
-
-            HideCreatePanel();
-            Debug.Log($"[Lobby] Room created: {response.room_id}, waiting for server ready...");
-
-            // Wait for the dedicated server to become ready before connecting
-            m_WaitForReadyCoroutine = StartCoroutine(WaitForServerReadyThenConnect(
-                response.room_id, response.host_address, response.port, playerName, response.room_key));
-            yield return m_WaitForReadyCoroutine;
-            m_WaitForReadyCoroutine = null;
+            // Start polling room status to show player count
+            StartAdminPoll(roomId);
         }
 
-        IEnumerator WaitForServerReadyThenConnect(string roomId, string hostAddress, int port, string playerName, string roomKey)
+        JoinResponse m_PendingAdminJoinResponse;
+
+        void HideAdminPanel()
         {
-            if (m_ConnectingPanel != null) m_ConnectingPanel.SetActive(true);
-            if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(true);
+            m_IsAdmin = false;
+            m_AdminRoomId = null;
+            m_PendingAdminJoinResponse = null;
+            StopAdminPoll();
+            if (m_AdminPanel != null) m_AdminPanel.SetActive(false);
+        }
 
-            float waited = 0f;
-            const float pollInterval = 1.5f;
-            const float timeout = 45f;
+        void UpdateAdminStatus(string msg)
+        {
+            if (m_AdminStatusText != null) m_AdminStatusText.text = msg;
+        }
 
-            while (waited < timeout)
+        void StartAdminPoll(string roomId)
+        {
+            StopAdminPoll();
+            m_AdminPollCoroutine = StartCoroutine(AdminPollLoop(roomId));
+        }
+
+        void StopAdminPoll()
+        {
+            if (m_AdminPollCoroutine != null)
             {
-                string msg = $"Waiting for server... ({(int)waited}s)";
-                SetStatus(msg);
-                if (m_ConnectingText != null) m_ConnectingText.text = msg;
+                StopCoroutine(m_AdminPollCoroutine);
+                m_AdminPollCoroutine = null;
+            }
+        }
 
-                yield return new WaitForSeconds(pollInterval);
-                waited += pollInterval;
-
+        IEnumerator AdminPollLoop(string roomId)
+        {
+            while (true)
+            {
                 var task = m_Client.GetRoomStatusAsync(roomId);
                 while (!task.IsCompleted)
                     yield return null;
 
-                if (task.IsFaulted)
+                if (!task.IsFaulted && task.Result != null)
                 {
-                    Debug.LogWarning($"[Lobby] Error polling room status: {task.Exception?.InnerException?.Message}");
-                    continue;
+                    if (m_AdminPlayerCountText != null)
+                        m_AdminPlayerCountText.text = $"Players: {task.Result.current_players}";
                 }
 
-                if (task.Result != null && task.Result.status == "ready")
-                {
-                    if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(false);
-                    Debug.Log($"[Lobby] Server ready for room {roomId}, connecting on port {port}...");
-                    ConnectToGameServer(hostAddress, port, playerName, roomKey);
-                    yield break;
-                }
+                yield return new WaitForSeconds(2f);
+            }
+        }
+
+        IEnumerator SetPrivateCoroutine()
+        {
+            if (!m_IsAdmin || string.IsNullOrEmpty(m_AdminRoomId)) yield break;
+
+            string password = m_AdminPasswordInput != null ? m_AdminPasswordInput.text : "";
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                UpdateAdminStatus("Enter a password first");
+                yield break;
             }
 
-            // Timeout — server never became ready
-            if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(false);
-            if (m_ConnectingPanel != null) m_ConnectingPanel.SetActive(false);
-            SetStatus("Server failed to start (timeout)");
-            Debug.LogError($"[Lobby] Server for room {roomId} did not become ready within {timeout}s");
-            StartAutoRefresh();
+            UpdateAdminStatus("Setting room to private...");
+            string playerName = GetPlayerName();
+            var task = m_Client.SetRoomPrivateAsync(m_AdminRoomId, playerName, password);
+            while (!task.IsCompleted)
+                yield return null;
+
+            if (task.Result)
+                UpdateAdminStatus("Room is now PRIVATE");
+            else
+                UpdateAdminStatus("Failed to set private");
+        }
+
+        IEnumerator SetPublicCoroutine()
+        {
+            if (!m_IsAdmin || string.IsNullOrEmpty(m_AdminRoomId)) yield break;
+
+            UpdateAdminStatus("Setting room to public...");
+            string playerName = GetPlayerName();
+            var task = m_Client.SetRoomPrivateAsync(m_AdminRoomId, playerName, null);
+            while (!task.IsCompleted)
+                yield return null;
+
+            if (task.Result)
+                UpdateAdminStatus("Room is now PUBLIC");
+            else
+                UpdateAdminStatus("Failed to set public");
+        }
+
+        IEnumerator StartGameCoroutine()
+        {
+            if (!m_IsAdmin || string.IsNullOrEmpty(m_AdminRoomId)) yield break;
+
+            UpdateAdminStatus("Starting game...");
+            string playerName = GetPlayerName();
+            var task = m_Client.StartGameAsync(m_AdminRoomId, playerName);
+            while (!task.IsCompleted)
+                yield return null;
+
+            if (!task.Result)
+            {
+                UpdateAdminStatus("Failed to start game");
+                yield break;
+            }
+
+            // Game started — now connect the admin to the game server
+            if (m_PendingAdminJoinResponse != null)
+            {
+                StopAdminPoll();
+                if (m_AdminPanel != null) m_AdminPanel.SetActive(false);
+                ConnectToGameServer(
+                    m_PendingAdminJoinResponse.host_address,
+                    m_PendingAdminJoinResponse.port,
+                    playerName,
+                    m_PendingAdminJoinResponse.room_key
+                );
+            }
         }
 
         // ===========================================================
@@ -554,7 +568,6 @@ namespace Unity.BossRoom.Gameplay.UI
             if (m_ConnectingText != null) m_ConnectingText.text = $"Connecting to {address}:{port}...";
             if (m_LoadingSpinner != null) m_LoadingSpinner.SetActive(true);
 
-            // Store room key in the pending payload so it's sent to the game server
             var netManager = BossRoomNetworkManager.singleton;
             if (netManager != null)
             {
@@ -586,6 +599,12 @@ namespace Unity.BossRoom.Gameplay.UI
 
         void OnConnectIPClicked()
         {
+            if (m_WaitForReadyCoroutine != null)
+            {
+                StopCoroutine(m_WaitForReadyCoroutine);
+                m_WaitForReadyCoroutine = null;
+            }
+
             string ip = m_IPAddressInput != null ? m_IPAddressInput.text.Trim() : "127.0.0.1";
             if (string.IsNullOrWhiteSpace(ip)) ip = "127.0.0.1";
 
@@ -599,6 +618,12 @@ namespace Unity.BossRoom.Gameplay.UI
 
         void OnHostIPClicked()
         {
+            if (m_WaitForReadyCoroutine != null)
+            {
+                StopCoroutine(m_WaitForReadyCoroutine);
+                m_WaitForReadyCoroutine = null;
+            }
+
             string ip = m_IPAddressInput != null ? m_IPAddressInput.text.Trim() : "127.0.0.1";
             if (string.IsNullOrWhiteSpace(ip)) ip = "127.0.0.1";
 

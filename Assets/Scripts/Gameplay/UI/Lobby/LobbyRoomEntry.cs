@@ -28,7 +28,7 @@ namespace Unity.BossRoom.Gameplay.UI
 
             m_RoomNameText.text = roomInfo.name;
             m_PlayerCountText.text = $"{roomInfo.current_players}/{roomInfo.max_players}";
-            m_LockIcon.SetActive(roomInfo.has_password);
+            m_LockIcon.SetActive(roomInfo.has_password || roomInfo.is_locked);
 
             switch (roomInfo.status)
             {
