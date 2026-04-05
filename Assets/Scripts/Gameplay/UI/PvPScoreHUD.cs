@@ -27,6 +27,8 @@ namespace Unity.BossRoom.Gameplay.UI
         public static void EnsureExists()
         {
             if (s_Instance != null) return;
+            // Only create the HUD when PvPNetworkState is active (i.e. during gameplay scene)
+            if (PvPNetworkState.Instance == null) return;
             var go = new GameObject("PvPScoreHUD");
             s_Instance = go.AddComponent<PvPScoreHUD>();
         }

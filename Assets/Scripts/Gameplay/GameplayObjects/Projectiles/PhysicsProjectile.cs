@@ -124,6 +124,16 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
             m_Visualization.parent = transform;
         }
 
+        void OnDestroy()
+        {
+            // Safety: if the visualization was detached and OnStopClient didn't run
+            // (e.g. scene change), destroy the orphaned visual object.
+            if (m_Visualization != null && m_Visualization.parent == null)
+            {
+                Destroy(m_Visualization.gameObject);
+            }
+        }
+
         void FixedUpdate()
         {
             if (!m_Started || !isServer)

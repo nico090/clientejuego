@@ -26,6 +26,11 @@ namespace Unity.BossRoom.Gameplay.GameState
         bool m_MatchActive;
         string m_SerializedFinalScores;
 
+        // ── Sync throttle ──
+        const float k_SyncInterval = 0.25f;
+        float m_NextSyncTime;
+        bool m_ScoresDirty;
+
         // ── Events ──
         public event Action MatchEnded;
 
@@ -107,10 +112,16 @@ namespace Unity.BossRoom.Gameplay.GameState
             {
                 m_MatchTimeRemaining = 0f;
                 EndMatch();
+                return;
             }
 
-            // Push state to network for client sync
-            SyncToNetwork();
+            // Throttle network sync to avoid per-frame JSON serialization
+            if (Time.time >= m_NextSyncTime || m_ScoresDirty)
+            {
+                m_ScoresDirty = false;
+                m_NextSyncTime = Time.time + k_SyncInterval;
+                SyncToNetwork();
+            }
         }
 
         // ──────────────────────────────────────────────
@@ -160,6 +171,7 @@ namespace Unity.BossRoom.Gameplay.GameState
             if (m_Scores.ContainsKey(netId))
             {
                 m_Scores[netId] += points;
+                m_ScoresDirty = true;
             }
         }
 

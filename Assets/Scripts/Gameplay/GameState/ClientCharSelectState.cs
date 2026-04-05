@@ -401,7 +401,7 @@ namespace Unity.BossRoom.Gameplay.GameState
         {
             if (NetworkClient.active && m_NetworkCharSelection != null)
             {
-                m_NetworkCharSelection.ServerChangeSeatRpc(seatIdx, false);
+                m_NetworkCharSelection.CmdChangeSeat(seatIdx, false);
             }
         }
 
@@ -410,7 +410,7 @@ namespace Unity.BossRoom.Gameplay.GameState
         {
             if (NetworkClient.active && m_NetworkCharSelection != null)
             {
-                m_NetworkCharSelection.ServerChangeSeatRpc(m_LastSeatSelected, !m_HasLocalPlayerLockedIn);
+                m_NetworkCharSelection.CmdChangeSeat(m_LastSeatSelected, !m_HasLocalPlayerLockedIn);
             }
         }
 
@@ -573,7 +573,7 @@ namespace Unity.BossRoom.Gameplay.GameState
 
             if (NetworkClient.active && m_NetworkCharSelection != null)
             {
-                m_NetworkCharSelection.ServerChangeNameRpc(newName);
+                m_NetworkCharSelection.CmdChangeName(newName);
                 m_NameConfirmed = true;
             }
         }

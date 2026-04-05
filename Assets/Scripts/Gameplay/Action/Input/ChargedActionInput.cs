@@ -26,7 +26,7 @@ namespace Unity.BossRoom.Gameplay.Actions
 
         public override void OnReleaseKey()
         {
-            m_PlayerOwner.ServerStopChargingUpRpc();
+            m_PlayerOwner.CmdStopChargingUp();
             Destroy(gameObject);
         }
 

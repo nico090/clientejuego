@@ -133,7 +133,7 @@ namespace Unity.BossRoom.Gameplay.GameState
         /// requiresAuthority = false allows any client to call this.
         /// </summary>
         [Command(requiresAuthority = false)]
-        public void ServerChangeSeatRpc(int seatIdx, bool lockedIn, NetworkConnectionToClient sender = null)
+        public void CmdChangeSeat(int seatIdx, bool lockedIn, NetworkConnectionToClient sender = null)
         {
             ulong clientId = sender != null ? (ulong)sender.connectionId : 0ul;
             OnClientChangedSeat?.Invoke(clientId, seatIdx, lockedIn);
@@ -148,7 +148,7 @@ namespace Unity.BossRoom.Gameplay.GameState
         /// Command for clients to change their display name during character select.
         /// </summary>
         [Command(requiresAuthority = false)]
-        public void ServerChangeNameRpc(string newName, NetworkConnectionToClient sender = null)
+        public void CmdChangeName(string newName, NetworkConnectionToClient sender = null)
         {
             ulong clientId = sender != null ? (ulong)sender.connectionId : 0ul;
             OnClientChangedName?.Invoke(clientId, newName);

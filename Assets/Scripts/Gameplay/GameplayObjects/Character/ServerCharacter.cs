@@ -264,7 +264,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         /// Command to send movement input from a client to the server.
         /// </summary>
         [Command]
-        public void ServerSendCharacterInputRpc(Vector3 movementTarget)
+        public void CmdSendCharacterInput(Vector3 movementTarget)
         {
             if (LifeState == LifeState.Alive && !m_Movement.IsPerformingForcedMovement())
             {
@@ -288,7 +288,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         /// Client->Server Command that sends a request to play an action.
         /// </summary>
         [Command]
-        public void ServerPlayActionRpc(ActionRequestData data)
+        public void CmdPlayAction(ActionRequestData data)
         {
             ActionRequestData data1 = data;
             if (!GameDataSource.Instance.GetActionPrototypeByID(data1.ActionID).Config.IsFriendly)
@@ -306,7 +306,7 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
         /// Called on server when the character's client decides they have stopped "charging up" an attack.
         /// </summary>
         [Command]
-        public void ServerStopChargingUpRpc()
+        public void CmdStopChargingUp()
         {
             m_ServerActionPlayer.OnGameplayActivity(Action.GameplayActivity.StoppedChargingUp);
         }
@@ -321,11 +321,14 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects.Character
                 SessionPlayerData? sessionPlayerData = SessionManager<SessionPlayerData>.Instance.GetPlayerData(ownerClientId);
                 if (sessionPlayerData is { HasCharacterSpawned: true })
                 {
-                    HitPoints = sessionPlayerData.Value.CurrentHitPoints;
-                    if (HitPoints <= 0)
+                    // If the stored HP is valid (> 0), restore it.
+                    // Otherwise keep full HP — this handles late-join / reconnect
+                    // where the player was fainted before disconnecting.
+                    if (sessionPlayerData.Value.CurrentHitPoints > 0)
                     {
-                        LifeState = LifeState.Fainted;
+                        HitPoints = sessionPlayerData.Value.CurrentHitPoints;
                     }
+                    // else: keep BaseHP (already set above) — spawn alive with full health
                 }
             }
         }

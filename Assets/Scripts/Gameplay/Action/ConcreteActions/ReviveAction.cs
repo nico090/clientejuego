@@ -21,6 +21,11 @@ namespace Unity.BossRoom.Gameplay.Actions
                 return false;
             }
             m_TargetCharacter = targetNetworkObject.GetComponent<ServerCharacter>();
+            if (m_TargetCharacter == null)
+            {
+                Debug.Log("Failed to start ReviveAction. Target does not have a ServerCharacter component.");
+                return false;
+            }
 
             serverCharacter.serverAnimationHandler.NetworkAnimator.SetTrigger(Config.Anim);
 

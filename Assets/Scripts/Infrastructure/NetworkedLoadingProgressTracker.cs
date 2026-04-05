@@ -13,6 +13,8 @@ namespace Unity.BossRoom.Infrastructure
         [SyncVar]
         float m_Progress;
 
+        LoadingProgressManager m_CachedManager;
+
         /// <summary>Current loading progress for this client (0 to 1).</summary>
         public float Progress => m_Progress;
 
@@ -27,12 +29,11 @@ namespace Unity.BossRoom.Infrastructure
             base.OnStartClient();
             if (isOwned)
             {
-                // Register with the LoadingProgressManager if available
-                var manager = FindObjectOfType<LoadingProgressManager>();
-                if (manager != null)
+                m_CachedManager = FindObjectOfType<LoadingProgressManager>();
+                if (m_CachedManager != null)
                 {
                     ulong clientId = connectionToServer != null ? 0ul : (ulong)connectionToClient.connectionId;
-                    manager.AddTracker(clientId, this);
+                    m_CachedManager.AddTracker(clientId, this);
                 }
             }
         }
@@ -48,13 +49,11 @@ namespace Unity.BossRoom.Infrastructure
 
         void Update()
         {
-            if (isOwned && !isServer)
+            if (isOwned && !isServer && m_CachedManager != null)
             {
-                // Sync local async loading progress to server
-                var manager = FindObjectOfType<LoadingProgressManager>();
-                if (manager != null && Mathf.Abs(manager.LocalProgress - m_Progress) > 0.01f)
+                if (Mathf.Abs(m_CachedManager.LocalProgress - m_Progress) > 0.01f)
                 {
-                    CmdSetProgress(manager.LocalProgress);
+                    CmdSetProgress(m_CachedManager.LocalProgress);
                 }
             }
         }

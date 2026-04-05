@@ -1,8 +1,50 @@
+using System;
+using System.Collections.Generic;
 using Mirror;
 using UnityEngine;
 
 namespace Unity.BossRoom.Infrastructure
 {
+    /// <summary>
+    /// Centralized dispatcher for BossRoomChannelMessage. Routes incoming messages
+    /// to the correct NetworkedMessageChannel by channel name.
+    /// This solves the problem of ReplaceHandler overwriting previous handlers
+    /// when multiple NetworkedMessageChannel instances exist.
+    /// </summary>
+    static class NetworkedChannelDispatcher
+    {
+        static readonly Dictionary<string, Action<BossRoomChannelMessage>> s_Handlers =
+            new Dictionary<string, Action<BossRoomChannelMessage>>();
+
+        static bool s_Registered;
+
+        public static void Register(string channelName, Action<BossRoomChannelMessage> handler)
+        {
+            s_Handlers[channelName] = handler;
+            EnsureHandlerRegistered();
+        }
+
+        public static void Unregister(string channelName)
+        {
+            s_Handlers.Remove(channelName);
+        }
+
+        static void EnsureHandlerRegistered()
+        {
+            if (s_Registered) return;
+            s_Registered = true;
+            NetworkClient.ReplaceHandler<BossRoomChannelMessage>(OnMessage, requireAuthentication: false);
+        }
+
+        static void OnMessage(BossRoomChannelMessage msg)
+        {
+            if (s_Handlers.TryGetValue(msg.ChannelName, out var handler))
+            {
+                handler.Invoke(msg);
+            }
+        }
+    }
+
     /// <summary>
     /// Mirror-based networked message channel. The server publishes a message that is sent to all clients
     /// and also published locally. Clients subscribe to receive messages from the server.
@@ -16,28 +58,16 @@ namespace Unity.BossRoom.Infrastructure
         public NetworkedMessageChannel()
         {
             m_ChannelName = typeof(T).FullName;
-
-            // Always register immediately. Mirror's RegisterMessageHandlers does not
-            // clear custom handlers, so this survives ConnectHost/scene changes.
-            // NOTE: We cannot use NetworkClient.OnConnectedEvent because Mirror's
-            // NetworkManager overwrites it with `= OnClientConnectInternal` (not +=).
-            RegisterHandler();
+            NetworkedChannelDispatcher.Register(m_ChannelName, ReceiveMessageThroughNetwork);
         }
 
         public override void Dispose()
         {
             if (!IsDisposed)
             {
-                NetworkClient.UnregisterHandler<BossRoomChannelMessage>();
+                NetworkedChannelDispatcher.Unregister(m_ChannelName);
             }
             base.Dispose();
-        }
-
-        void RegisterHandler()
-        {
-            // Always register so the local host client can handle the message too.
-            // ReplaceHandler avoids "replacing handler" warnings when multiple channels exist.
-            NetworkClient.ReplaceHandler<BossRoomChannelMessage>(ReceiveMessageThroughNetwork, requireAuthentication: false);
         }
 
         public override void Publish(T message)
@@ -66,9 +96,6 @@ namespace Unity.BossRoom.Infrastructure
         {
             // In host mode, Publish() already called base.Publish locally — skip to avoid duplicates.
             if (NetworkServer.active) return;
-
-            if (msg.ChannelName != m_ChannelName)
-                return;
 
             var message = JsonUtility.FromJson<T>(msg.Data);
             base.Publish(message);

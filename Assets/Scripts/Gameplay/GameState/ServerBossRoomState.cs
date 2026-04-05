@@ -177,8 +177,18 @@ namespace Unity.BossRoom.Gameplay.GameState
 
         void OnServerClientDisconnected(NetworkConnectionToClient conn)
         {
-            // In PvP mode, disconnecting players are unregistered from the score system.
-            // The match continues for remaining players.
+            // Unregister the disconnected player's avatar from the PvP score system
+            if (PvPScoreManager.Instance != null && conn != null)
+            {
+                foreach (var owned in conn.owned)
+                {
+                    if (owned != null && owned != conn.identity && owned.TryGetComponent<ServerCharacter>(out _))
+                    {
+                        PvPScoreManager.Instance.UnregisterPlayer(owned.netId);
+                        break;
+                    }
+                }
+            }
         }
 
         void SpawnPlayer(ulong clientId, bool lateJoin)
@@ -198,11 +208,13 @@ namespace Unity.BossRoom.Gameplay.GameState
             m_PlayerSpawnPointsList.RemoveAt(index);
 
             // Get the player's persistent object (PersistentPlayer) from their connection
-            GameObject persistentPlayerGO = null;
-            if (NetworkServer.connections.TryGetValue((int)clientId, out var conn) && conn.identity != null)
+            if (!NetworkServer.connections.TryGetValue((int)clientId, out var conn) || conn == null)
             {
-                persistentPlayerGO = conn.identity.gameObject;
+                Debug.LogWarning($"[ServerBossRoomState] SpawnPlayer: connection {clientId} not found, aborting spawn.");
+                return;
             }
+
+            GameObject persistentPlayerGO = conn.identity != null ? conn.identity.gameObject : null;
 
             var newPlayer = Instantiate(m_PlayerPrefab, Vector3.zero, Quaternion.identity);
 

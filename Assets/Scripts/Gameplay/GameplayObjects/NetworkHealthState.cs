@@ -11,7 +11,23 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
     {
         [HideInInspector]
         [SyncVar(hook = nameof(OnHitPointsChanged))]
-        public int HitPoints;
+        int m_HitPoints;
+
+        /// <summary>
+        /// Current hit points. Write on server; fires events on both server and clients.
+        /// Mirror does not call SyncVar hooks on the server, so the property setter
+        /// fires the hook manually when isServer is true.
+        /// </summary>
+        public int HitPoints
+        {
+            get => m_HitPoints;
+            set
+            {
+                var old = m_HitPoints;
+                m_HitPoints = value;
+                if (isServer) OnHitPointsChanged(old, value);
+            }
+        }
 
         // public subscribable event to be invoked when HP has been fully depleted
         public event Action HitPointsDepleted;
@@ -22,7 +38,8 @@ namespace Unity.BossRoom.Gameplay.GameplayObjects
         // public subscribable event to be invoked on every HP change (old, new)
         public event Action<int, int> HitPointsChanged;
 
-        // SyncVar hook — called on clients when value is updated from server
+        // SyncVar hook — called on clients when value is updated from server,
+        // and manually on the server via the property setter.
         void OnHitPointsChanged(int previousValue, int newValue)
         {
             HitPointsChanged?.Invoke(previousValue, newValue);
