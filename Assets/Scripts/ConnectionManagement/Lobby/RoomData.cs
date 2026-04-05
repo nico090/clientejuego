@@ -8,11 +8,13 @@ namespace Unity.BossRoom.ConnectionManagement.Lobby
         public string room_id;
         public string name;
         public bool has_password;
+        public bool is_locked;
         public int current_players;
         public int max_players;
         public string host_address;
         public int port;
         public string status;
+        public string admin_player;
         public string created_at;
     }
 
@@ -20,26 +22,6 @@ namespace Unity.BossRoom.ConnectionManagement.Lobby
     public class RoomListResponse
     {
         public RoomInfo[] items;
-    }
-
-    [Serializable]
-    public class CreateRoomRequest
-    {
-        public string name;
-        public string password;
-        public int max_players;
-        public string creator_name;
-    }
-
-    [Serializable]
-    public class CreateRoomResponse
-    {
-        public string room_id;
-        public string name;
-        public int port;
-        public int max_players;
-        public string host_address;
-        public string room_key;
     }
 
     [Serializable]
@@ -57,7 +39,23 @@ namespace Unity.BossRoom.ConnectionManagement.Lobby
         public string host_address;
         public int port;
         public string room_key;
+        public bool is_admin;
         public string error;
+    }
+
+    [Serializable]
+    public class SetPrivateRequest
+    {
+        public string room_id;
+        public string player_name;
+        public string password;
+    }
+
+    [Serializable]
+    public class StartGameRequest
+    {
+        public string room_id;
+        public string player_name;
     }
 
     [Serializable]
@@ -66,5 +64,7 @@ namespace Unity.BossRoom.ConnectionManagement.Lobby
         public string room_id;
         public string status;
         public int current_players;
+        public string admin_player;
+        public bool is_locked;
     }
 }

@@ -13,7 +13,7 @@ namespace Unity.BossRoom.Gameplay.UI
     public class IPUIMediator : MonoBehaviour
     {
         public const string k_DefaultIP = "127.0.0.1";
-        public const int k_DefaultPort = 9998;
+        public const int k_DefaultPort = 7777;
 
         [SerializeField]
         CanvasGroup m_CanvasGroup;

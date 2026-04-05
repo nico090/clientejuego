@@ -23,13 +23,16 @@ namespace Unity.BossRoom.ConnectionManagement
             m_PlayerName = playerName;
         }
 
-        protected void SetConnectionPayload(string playerId, string playerName)
+        protected void SetConnectionPayload(string playerId, string playerName, string roomKey = null)
         {
+            // Preserve any existing roomKey if one isn't explicitly provided
+            var existing = m_ConnectionManager.NetworkManager.PendingClientPayload;
             m_ConnectionManager.NetworkManager.PendingClientPayload = new ConnectionPayload
             {
                 playerId = playerId,
                 playerName = playerName,
-                isDebug = Debug.isDebugBuild
+                isDebug = Debug.isDebugBuild,
+                roomKey = roomKey ?? existing?.roomKey
             };
         }
 

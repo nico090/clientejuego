@@ -35,31 +35,6 @@ namespace Unity.BossRoom.ConnectionManagement.Lobby
             return response?.items ?? Array.Empty<RoomInfo>();
         }
 
-        public async Task<CreateRoomResponse> CreateRoomAsync(string roomName, string password, int maxPlayers, string creatorName)
-        {
-            var body = new CreateRoomRequest
-            {
-                name = roomName,
-                password = string.IsNullOrEmpty(password) ? null : password,
-                max_players = maxPlayers,
-                creator_name = creatorName
-            };
-            string json = await PostAsync("/api/rooms", JsonUtility.ToJson(body));
-            Debug.Log($"[MasterServerClient] CreateRoomAsync response: {json}");
-            var response = JsonUtility.FromJson<CreateRoomResponse>(json);
-            if (response == null)
-            {
-                Debug.LogError($"[MasterServerClient] Failed to parse created room response");
-            }
-            return response;
-        }
-
-        public async Task<RoomStatusResponse> GetRoomStatusAsync(string roomId)
-        {
-            string json = await GetAsync($"/api/rooms/{roomId}/status");
-            return JsonUtility.FromJson<RoomStatusResponse>(json);
-        }
-
         public async Task<JoinResponse> JoinRoomAsync(string roomId, string password, string playerName)
         {
             var body = new JoinRoomRequest
@@ -70,6 +45,53 @@ namespace Unity.BossRoom.ConnectionManagement.Lobby
             };
             string json = await PostAsync("/api/rooms/join", JsonUtility.ToJson(body));
             return JsonUtility.FromJson<JoinResponse>(json);
+        }
+
+        public async Task<RoomStatusResponse> GetRoomStatusAsync(string roomId)
+        {
+            string json = await GetAsync($"/api/rooms/{roomId}/status");
+            return JsonUtility.FromJson<RoomStatusResponse>(json);
+        }
+
+        public async Task<bool> SetRoomPrivateAsync(string roomId, string playerName, string password)
+        {
+            var body = new SetPrivateRequest
+            {
+                room_id = roomId,
+                player_name = playerName,
+                password = password
+            };
+            try
+            {
+                string json = await PostAsync($"/api/rooms/{roomId}/set-private", JsonUtility.ToJson(body));
+                Debug.Log($"[MasterServerClient] SetRoomPrivate response: {json}");
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[MasterServerClient] SetRoomPrivate failed: {e.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> StartGameAsync(string roomId, string playerName)
+        {
+            var body = new StartGameRequest
+            {
+                room_id = roomId,
+                player_name = playerName
+            };
+            try
+            {
+                string json = await PostAsync($"/api/rooms/{roomId}/start", JsonUtility.ToJson(body));
+                Debug.Log($"[MasterServerClient] StartGame response: {json}");
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[MasterServerClient] StartGame failed: {e.Message}");
+                return false;
+            }
         }
 
         async Task<string> GetAsync(string endpoint)

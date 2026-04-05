@@ -24,6 +24,16 @@ namespace Unity.BossRoom.ConnectionManagement
 
         public override void OnClientConnected(ulong clientId)
         {
+            // The ConnectionPayloadMessage handler may not have been processed yet
+            // (timing issue between ReadyMessage and payload processing in Mirror).
+            // Defer one frame to allow pending messages to be dispatched.
+            m_ConnectionManager.StartCoroutine(OnClientConnectedDeferred(clientId));
+        }
+
+        System.Collections.IEnumerator OnClientConnectedDeferred(ulong clientId)
+        {
+            yield return null; // wait one frame for ConnectionPayloadMessage to be processed
+
             var playerData = SessionManager<SessionPlayerData>.Instance.GetPlayerData(clientId);
             if (playerData != null)
             {
@@ -35,7 +45,7 @@ namespace Unity.BossRoom.ConnectionManagement
             }
             else
             {
-                Debug.LogError($"No player data associated with client {clientId}");
+                Debug.LogError($"[HostingState] No player data for client {clientId} — payload may not have arrived. Disconnecting.");
                 var reason = JsonUtility.ToJson(ConnectStatus.GenericDisconnect);
                 m_ConnectionManager.NetworkManager.DisconnectClient((int)clientId, reason);
             }
